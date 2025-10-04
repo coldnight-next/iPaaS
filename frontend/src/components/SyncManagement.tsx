@@ -118,19 +118,26 @@ export default function SyncManagement() {
     setSavingPattern(true)
     try {
       console.log('Starting pattern save...')
+      console.log('Session:', session)
+      console.log('User ID:', session?.user?.id)
+      
       const values = await form.validateFields()
       console.log('Form values:', values)
       
+      const insertData = {
+        user_id: session?.user.id,
+        ...values,
+        filters: currentFilters
+      }
+      console.log('Data to insert:', insertData)
+      
       const { data, error } = await supabase
         .from('saved_search_patterns')
-        .insert([{
-          user_id: session?.user.id,
-          ...values,
-          filters: currentFilters
-        }])
+        .insert([insertData])
         .select()
 
       console.log('Insert result:', { data, error })
+      console.log('Error details:', error ? JSON.stringify(error, null, 2) : 'No error')
       
       if (error) throw error
       
@@ -140,13 +147,25 @@ export default function SyncManagement() {
       await loadSavedPatterns()
     } catch (error: any) {
       console.error('Error saving pattern:', error)
+      console.error('Error type:', typeof error)
+      console.error('Error keys:', error ? Object.keys(error) : 'null')
+      console.error('Error message:', error?.message)
+      console.error('Error code:', error?.code)
+      console.error('Error details:', error?.details)
+      console.error('Error hint:', error?.hint)
+      console.error('Full error JSON:', JSON.stringify(error, null, 2))
       
       // Better error handling
       if (error.errorFields) {
         // Validation error
         message.error('Please fill in all required fields')
+      } else if (error.code === '23505') {
+        // Unique constraint violation
+        message.error('A pattern with this name already exists')
+      } else if (error.message) {
+        message.error('Failed to save pattern: ' + error.message)
       } else {
-        message.error('Failed to save pattern: ' + (error.message || 'Unknown error'))
+        message.error('Failed to save pattern. Check console for details.')
       }
     } finally {
       setSavingPattern(false)
