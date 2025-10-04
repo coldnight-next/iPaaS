@@ -39,6 +39,7 @@ const FUNCTIONS_BASE = configuredFunctionsBase || inferredFunctionsBase || 'http
 export default function ProductSyncPreview() {
   const { session } = useAuth()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [netsuiteProducts, setNetsuiteProducts] = useState<Product[]>([])
   const [shopifyProducts, setShopifyProducts] = useState<Product[]>([])
   const [mappings, setMappings] = useState<SyncMapping[]>([])
@@ -50,13 +51,16 @@ export default function ProductSyncPreview() {
   const [syncDirection, setSyncDirection] = useState<'netsuite-to-shopify' | 'shopify-to-netsuite' | 'bidirectional'>('netsuite-to-shopify')
 
   useEffect(() => {
-    loadProducts()
-  }, [])
+    if (session) {
+      loadProducts()
+    }
+  }, [session])
 
   const loadProducts = async () => {
     if (!session) return
     
     setLoading(true)
+    setError(null)
     try {
       const response = await fetch(`${FUNCTIONS_BASE}/fetch-products`, {
         method: 'POST',
@@ -79,8 +83,9 @@ export default function ProductSyncPreview() {
       
       // Auto-generate mappings based on SKU
       generateMappings(data.netsuite || [], data.shopify || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading products:', error)
+      setError(error.message || 'Failed to load products')
       message.error('Failed to load products. Please check your connections.')
     } finally {
       setLoading(false)
@@ -283,6 +288,25 @@ export default function ProductSyncPreview() {
       }
     }
   ]
+
+  // Show error state
+  if (error) {
+    return (
+      <div style={{ padding: '24px' }}>
+        <Alert
+          message="Error Loading Products"
+          description={error}
+          type="error"
+          showIcon
+          action={
+            <Button onClick={loadProducts} loading={loading}>
+              Retry
+            </Button>
+          }
+        />
+      </div>
+    )
+  }
 
   return (
     <div style={{ padding: '24px' }}>
