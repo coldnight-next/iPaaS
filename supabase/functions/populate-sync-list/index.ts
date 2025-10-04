@@ -88,22 +88,30 @@ serve(async (req) => {
     if (pattern.netsuite_saved_search_id) {
       console.log(`Fetching items from NetSuite saved search: ${pattern.netsuite_saved_search_id}`)
       
-      // Fetch items from NetSuite saved search
-      const searchUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`
+      // NetSuite saved search ID format can be:
+      // - customsearch123 (custom search)
+      // - customsearch_my_search (custom search with name)
+      // - 123 (numeric ID)
       
-      // Use SuiteQL to query the saved search results
-      const suiteQLQuery = `SELECT id, itemid, displayname, baseprice, quantityavailable FROM item WHERE id IN (SELECT id FROM item WHERE id IN (SELECT itemid FROM customsearch_${pattern.netsuite_saved_search_id}))`
+      const searchId = pattern.netsuite_saved_search_id
       
-      const searchResponse = await fetch(searchUrl, {
-        method: 'POST',
+      // Use NetSuite's search API endpoint
+      // Format: /services/rest/record/v1/item?savedSearchId=customsearch123
+      const searchUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/item`
+      const params = new URLSearchParams()
+      params.append('limit', '1000')
+      params.append('savedSearchId', searchId)
+      
+      const fullUrl = `${searchUrl}?${params.toString()}`
+      console.log('Fetching from URL:', fullUrl)
+      
+      const searchResponse = await fetch(fullUrl, {
+        method: 'GET',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
           'prefer': 'transient',
         },
-        body: JSON.stringify({
-          q: suiteQLQuery
-        }),
       })
 
       if (!searchResponse.ok) {
