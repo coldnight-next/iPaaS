@@ -30,7 +30,6 @@ import {
   PhoneOutlined,
   TeamOutlined
 } from '@ant-design/icons'
-import { supabase } from '../lib/supabaseClient'
 import type { Session } from '@supabase/supabase-js'
 
 const { Title, Text } = Typography
