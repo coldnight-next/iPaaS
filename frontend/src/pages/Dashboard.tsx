@@ -14,6 +14,7 @@ import ManualConnectionSetup from '../components/ManualConnectionSetup'
 import ProductSyncPreview from '../components/ProductSyncPreview'
 import SyncManagement from '../components/SyncManagement'
 import UserManagement from '../components/UserManagement'
+import OrderSyncManagement from '../components/OrderSyncManagement'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -90,6 +91,10 @@ export default function Dashboard() {
 
   const [syncLogs, setSyncLogs] = useState([])
   const [syncLogsLoading, setSyncLogsLoading] = useState(false)
+
+  // User role state
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [roleLoading, setRoleLoading] = useState(true)
 
   // Sidebar responsive state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -173,12 +178,43 @@ export default function Dashboard() {
     }
   }, [loadConnections])
 
+  // Load user role from database
+  const loadUserRole = useCallback(async () => {
+    if (!session) {
+      setUserRole(null)
+      setRoleLoading(false)
+      return
+    }
+    
+    setRoleLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('user_id', session.user.id)
+        .single()
+      
+      if (error) {
+        console.error('Failed to load user role:', error)
+        setUserRole(null)
+      } else {
+        setUserRole(data?.role || null)
+      }
+    } catch (error) {
+      console.error('Error loading user role:', error)
+      setUserRole(null)
+    } finally {
+      setRoleLoading(false)
+    }
+  }, [session])
+
   useEffect(() => {
     if (session) {
       void loadConnections()
       void loadSyncLogs()
+      void loadUserRole()
     }
-  }, [session, loadConnections, loadSyncLogs])
+  }, [session, loadConnections, loadSyncLogs, loadUserRole])
 
   // Auth handled by AuthContext - signOut is imported from useAuth()
 
@@ -310,14 +346,9 @@ export default function Dashboard() {
     }
   }
 
-  // Check if user has admin role (simplified - in real app, check user metadata or database)
-  // For development, also check if we're in development mode
-  const isAdmin = session?.user?.email?.includes('admin') ||
-                   session?.user?.user_metadata?.role === 'admin' ||
-                   import.meta.env.DEV // Show admin features in development mode
-
-  // Always show admin menu in development mode for testing
-  const showAdminMenu = isAdmin || import.meta.env.DEV
+  // Check if user has admin role from database
+  const isAdmin = userRole === 'admin'
+  const showAdminMenu = isAdmin
 
   // Build consolidated menu items for better UX
   const menuItems = [
@@ -1602,7 +1633,12 @@ export default function Dashboard() {
         )}
 
         {/* Orders Management Page */}
-        {activeTab === 'orders' && (
+        {activeTab === 'orders' && session && (
+          <OrderSyncManagement session={session} />
+        )}
+
+        {/* Orders Management Page OLD - Remove after testing */}
+        {activeTab === 'orders_old' && (
           <div>
             <Typography.Title level={2} style={{ marginBottom: '24px' }}>
               Orders Management
