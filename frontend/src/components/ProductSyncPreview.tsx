@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Card, Table, Button, Space, Tag, Spin, Alert, Typography, Row, Col, Select, Input, Checkbox, Statistic, Tabs, Modal, message } from 'antd'
-import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Space, Tag, Spin, Alert, Typography, Row, Col, Select, Input, Checkbox, Statistic, Tabs, Modal, message, Radio } from 'antd'
+import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined, SwapOutlined } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -47,6 +47,7 @@ export default function ProductSyncPreview() {
   const [syncing, setSyncing] = useState(false)
   const [previewModalVisible, setPreviewModalVisible] = useState(false)
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
+  const [syncDirection, setSyncDirection] = useState<'netsuite-to-shopify' | 'shopify-to-netsuite' | 'bidirectional'>('netsuite-to-shopify')
 
   useEffect(() => {
     loadProducts()
@@ -87,21 +88,40 @@ export default function ProductSyncPreview() {
   }
 
   const generateMappings = (netsuiteItems: Product[], shopifyItems: Product[]) => {
-    const shopifyBySku = new Map(shopifyItems.map(p => [p.sku, p]))
-    
-    const newMappings: SyncMapping[] = netsuiteItems.map(nsProduct => {
-      const shopifyMatch = shopifyBySku.get(nsProduct.sku)
+    if (syncDirection === 'netsuite-to-shopify') {
+      const shopifyBySku = new Map(shopifyItems.map(p => [p.sku, p]))
       
-      return {
-        netsuiteId: nsProduct.id,
-        shopifyId: shopifyMatch?.id,
-        action: shopifyMatch ? 'update' : 'create',
-        conflicts: []
-      }
-    })
-    
-    setMappings(newMappings)
-    setSelectedProducts(newMappings.map(m => m.netsuiteId))
+      const newMappings: SyncMapping[] = netsuiteItems.map(nsProduct => {
+        const shopifyMatch = shopifyBySku.get(nsProduct.sku)
+        
+        return {
+          netsuiteId: nsProduct.id,
+          shopifyId: shopifyMatch?.id,
+          action: shopifyMatch ? 'update' : 'create',
+          conflicts: []
+        }
+      })
+      
+      setMappings(newMappings)
+      setSelectedProducts(newMappings.map(m => m.netsuiteId))
+    } else {
+      // Shopify to NetSuite direction (reverse mapping)
+      const netsuiteBySku = new Map(netsuiteItems.map(p => [p.sku, p]))
+      
+      const newMappings: SyncMapping[] = shopifyItems.map(shopifyProduct => {
+        const netsuiteMatch = netsuiteBySku.get(shopifyProduct.sku)
+        
+        return {
+          netsuiteId: netsuiteMatch?.id || '',
+          shopifyId: shopifyProduct.id,
+          action: netsuiteMatch ? 'update' : 'create',
+          conflicts: []
+        }
+      })
+      
+      setMappings(newMappings)
+      setSelectedProducts(newMappings.map(m => m.shopifyId!).filter(Boolean))
+    }
   }
 
   const handleSync = async () => {
@@ -112,7 +132,9 @@ export default function ProductSyncPreview() {
 
     setSyncing(true)
     try {
-      const selectedMappings = mappings.filter(m => selectedProducts.includes(m.netsuiteId))
+      const selectedMappings = syncDirection === 'netsuite-to-shopify'
+        ? mappings.filter(m => selectedProducts.includes(m.netsuiteId))
+        : mappings.filter(m => m.shopifyId && selectedProducts.includes(m.shopifyId))
       
       const response = await fetch(`${FUNCTIONS_BASE}/sync-products`, {
         method: 'POST',
@@ -121,7 +143,8 @@ export default function ProductSyncPreview() {
           Authorization: `Bearer ${session?.access_token}`
         },
         body: JSON.stringify({
-          mappings: selectedMappings
+          mappings: selectedMappings,
+          direction: syncDirection
         })
       })
 
@@ -147,14 +170,19 @@ export default function ProductSyncPreview() {
     setPreviewModalVisible(true)
   }
 
-  const filteredNetsuiteProducts = netsuiteProducts.filter(p =>
+  const sourceProducts = syncDirection === 'netsuite-to-shopify' ? netsuiteProducts : shopifyProducts
+  const filteredProducts = sourceProducts.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const stats = {
-    toCreate: mappings.filter(m => m.action === 'create' && selectedProducts.includes(m.netsuiteId)).length,
-    toUpdate: mappings.filter(m => m.action === 'update' && selectedProducts.includes(m.netsuiteId)).length,
+    toCreate: syncDirection === 'netsuite-to-shopify'
+      ? mappings.filter(m => m.action === 'create' && selectedProducts.includes(m.netsuiteId)).length
+      : mappings.filter(m => m.action === 'create' && m.shopifyId && selectedProducts.includes(m.shopifyId)).length,
+    toUpdate: syncDirection === 'netsuite-to-shopify'
+      ? mappings.filter(m => m.action === 'update' && selectedProducts.includes(m.netsuiteId)).length
+      : mappings.filter(m => m.action === 'update' && m.shopifyId && selectedProducts.includes(m.shopifyId)).length,
     total: selectedProducts.length
   }
 
@@ -263,8 +291,56 @@ export default function ProductSyncPreview() {
           <SyncOutlined spin={loading} /> Product Sync Preview
         </Title>
         <Paragraph>
-          Review NetSuite products and their Shopify mappings before syncing. Products are automatically matched by SKU.
+          Review products and their mappings before syncing. Products are automatically matched by SKU.
         </Paragraph>
+
+        {/* Sync Direction Selector */}
+        <Card style={{ marginBottom: 24, backgroundColor: '#f0f5ff' }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Text strong>Sync Direction:</Text>
+            <Radio.Group
+              value={syncDirection}
+              onChange={(e) => {
+                setSyncDirection(e.target.value)
+                generateMappings(netsuiteProducts, shopifyProducts)
+              }}
+              buttonStyle="solid"
+              size="large"
+            >
+              <Radio.Button value="netsuite-to-shopify">
+                <Space>
+                  <DatabaseOutlined />
+                  NetSuite → Shopify
+                  <ArrowRightOutlined />
+                </Space>
+              </Radio.Button>
+              <Radio.Button value="shopify-to-netsuite">
+                <Space>
+                  <ArrowRightOutlined style={{ transform: 'rotate(180deg)' }} />
+                  Shopify → NetSuite
+                  <DatabaseOutlined />
+                </Space>
+              </Radio.Button>
+              <Radio.Button value="bidirectional">
+                <Space>
+                  <SwapOutlined />
+                  Bidirectional
+                </Space>
+              </Radio.Button>
+            </Radio.Group>
+            <Alert
+              message={
+                syncDirection === 'netsuite-to-shopify'
+                  ? 'Products from NetSuite will be created or updated in Shopify'
+                  : syncDirection === 'shopify-to-netsuite'
+                  ? 'Products from Shopify will be created or updated in NetSuite'
+                  : 'Products will be synced in both directions based on last modified date'
+              }
+              type="info"
+              showIcon
+            />
+          </Space>
+        </Card>
 
         {/* Statistics */}
         <Row gutter={16} style={{ marginBottom: 24 }}>
@@ -298,8 +374,9 @@ export default function ProductSyncPreview() {
           <Col span={6}>
             <Card>
               <Statistic
-                title="NetSuite Items"
+                title={syncDirection === 'netsuite-to-shopify' ? 'Source (NetSuite)' : 'Target (NetSuite)'}
                 value={netsuiteProducts.length}
+                prefix={<DatabaseOutlined />}
               />
             </Card>
           </Col>
@@ -342,7 +419,7 @@ export default function ProductSyncPreview() {
         ) : (
           <Table
             columns={columns}
-            dataSource={filteredNetsuiteProducts}
+            dataSource={filteredProducts}
             rowKey="id"
             pagination={{
               pageSize: 20,
