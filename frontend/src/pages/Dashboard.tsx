@@ -16,6 +16,7 @@ import SyncManagement from '../components/SyncManagement'
 import UserManagement from '../components/UserManagement'
 import OrderSyncManagement from '../components/OrderSyncManagement'
 import InventorySyncManagement from '../components/InventorySyncManagement'
+import UserProfile from '../components/UserProfile'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -435,6 +436,7 @@ export default function Dashboard() {
       key: 'profile',
       icon: <UserOutlined />,
       label: 'Profile',
+      onClick: () => setActiveTab('profile'),
     },
     {
       key: 'logout',
@@ -1455,6 +1457,10 @@ export default function Dashboard() {
 
         {activeTab === 'user-management' && isAdmin && session && (
           <UserManagement session={session} />
+        )}
+
+        {activeTab === 'profile' && session && (
+          <UserProfile session={session} />
         )}
 
         {activeTab === 'system-settings' && isAdmin && (
