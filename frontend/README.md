@@ -67,3 +67,5 @@ export default defineConfig([
   },
 ])
 ```
+
+<!-- Trigger build -->
