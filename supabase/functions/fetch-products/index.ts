@@ -217,35 +217,50 @@ serve(async (req) => {
         }
         
         let products = items.map((item: any) => {
-          // Extract price levels
+          console.log('[fetch-products] Processing item:', item.id, 'Full item:', JSON.stringify(item, null, 2))
+          
+          // Extract price levels from NetSuite pricing
           const priceLevels: any = {}
-          if (item.pricing) {
-            // NetSuite pricing can be in various formats
-            if (item.pricing.pricingMatrix) {
-              item.pricing.pricingMatrix.forEach((level: any) => {
-                const levelName = level.priceLevel?.name || level.priceLevel || `Level ${level.id}`
-                priceLevels[levelName] = level.price || level.rate
-              })
-            }
-            if (item.pricing.priceList) {
-              item.pricing.priceList.forEach((priceItem: any) => {
-                const levelName = priceItem.priceLevel?.name || priceItem.pricelevel?.name || `Level ${priceItem.id}`
-                priceLevels[levelName] = priceItem.price || priceItem.rate
-              })
-            }
+          
+          // NetSuite stores pricing in pricingMatrix or itemPricingList
+          if (item.pricingMatrix && item.pricingMatrix.pricing) {
+            // Format: pricingMatrix.pricing is an array
+            const pricingArray = Array.isArray(item.pricingMatrix.pricing) ? item.pricingMatrix.pricing : [item.pricingMatrix.pricing]
+            pricingArray.forEach((priceItem: any) => {
+              const levelName = priceItem.priceLevel?.name || priceItem.priceLevel?.refName || `Level ${priceItem.priceLevel?.internalId || 'unknown'}`
+              priceLevels[levelName] = parseFloat(priceItem.price) || 0
+            })
+          }
+          
+          // Also check in itemPricingList
+          if (item.itemPricingList && item.itemPricingList.itemPricing) {
+            const pricingArray = Array.isArray(item.itemPricingList.itemPricing) ? item.itemPricingList.itemPricing : [item.itemPricingList.itemPricing]
+            pricingArray.forEach((priceItem: any) => {
+              const levelName = priceItem.priceLevel?.name || priceItem.priceLevel?.refName || `Level ${priceItem.priceLevel?.internalId || 'unknown'}`
+              priceLevels[levelName] = parseFloat(priceItem.price) || 0
+            })
           }
           
           // Handle price fields from different possible locations
-          const basePrice = item.basePrice || item.cost || item.purchasePrice || 0
-          const msrp = item.msrp || item.retailPrice || null
-          const cost = item.cost || item.purchaseCost || null
+          const basePrice = parseFloat(item.basePrice) || parseFloat(item.cost) || parseFloat(item.purchasePrice) || 0
+          const msrp = parseFloat(item.msrp) || parseFloat(item.retailPrice) || null
+          const cost = parseFloat(item.cost) || parseFloat(item.purchaseCost) || parseFloat(item.averageCost) || null
+          
+          // Extract inventory details
+          const quantityAvailable = parseFloat(item.quantityAvailable) || 0
+          const quantityOnHand = parseFloat(item.quantityOnHand) || 0
+          const quantityBackOrdered = parseFloat(item.quantityBackOrdered) || 0
+          const quantityCommitted = parseFloat(item.quantityCommitted) || 0
+          const quantityOnOrder = parseFloat(item.quantityOnOrder) || 0
+          const reorderPoint = parseFloat(item.reorderPoint) || 0
+          const preferredStockLevel = parseFloat(item.preferredStockLevel) || 0
           
           return {
             id: item.id,
             name: item.displayName || item.itemId,
             sku: item.itemId,
             price: basePrice,
-            inventory: item.quantityAvailable || item.quantityOnHand || 0,
+            inventory: quantityAvailable,
             platform: 'netsuite',
             status: item.isInactive ? 'inactive' : 'active',
             description: item.description || item.salesDescription || item.storeDescription,
@@ -256,31 +271,64 @@ serve(async (req) => {
             cost: cost,
             priceLevels: priceLevels,
             
-            // Classification fields
-            vendor: item.vendor?.name || item.vendorName || item.manufacturer,
-            manufacturer: item.manufacturer?.name || item.manufacturerName || item.vendor?.name,
-            brand: item.customFieldList?.customField?.find((f: any) => f.scriptId === 'custitem_brand')?.value || item.brand,
-            productGroup: item.class?.name || item.className || item.itemGroup,
-            division: item.department?.name || item.departmentName || item.division,
-            subsidiary: item.subsidiary?.name || item.subsidiaryName || (Array.isArray(item.subsidiaryList?.subsidiary) ? item.subsidiaryList.subsidiary.map((s: any) => s.name || s).join(', ') : null),
+            // Inventory details
+            quantityAvailable: quantityAvailable,
+            quantityOnHand: quantityOnHand,
+            quantityBackOrdered: quantityBackOrdered,
+            quantityCommitted: quantityCommitted,
+            quantityOnOrder: quantityOnOrder,
+            reorderPoint: reorderPoint,
+            preferredStockLevel: preferredStockLevel,
             
-            productType: item.itemType || item.class?.name,
-            category: item.category?.name || item.categoryName,
+            // Classification fields
+            vendor: item.vendor?.name || item.vendor?.refName || item.vendorName || '',
+            manufacturer: item.manufacturer?.name || item.manufacturer?.refName || item.manufacturerName || '',
+            brand: (() => {
+              if (item.customFieldList?.customField) {
+                const customFields = Array.isArray(item.customFieldList.customField) ? item.customFieldList.customField : [item.customFieldList.customField]
+                const brandField = customFields.find((f: any) => f.scriptId === 'custitem_brand' || f.internalId === 'custitem_brand')
+                return brandField?.value || brandField?.internalId || ''
+              }
+              return item.brand || ''
+            })(),
+            productGroup: item.class?.name || item.class?.refName || item.className || '',
+            division: item.department?.name || item.department?.refName || item.departmentName || '',
+            subsidiary: (() => {
+              if (item.subsidiary?.name) return item.subsidiary.name
+              if (item.subsidiaryName) return item.subsidiaryName
+              if (item.subsidiaryList?.subsidiary) {
+                const subs = Array.isArray(item.subsidiaryList.subsidiary) ? item.subsidiaryList.subsidiary : [item.subsidiaryList.subsidiary]
+                return subs.map((s: any) => s.name || s.refName || s).filter(Boolean).join(', ')
+              }
+              return ''
+            })(),
+            
+            productType: item.itemType || item.type || '',
+            category: item.category?.name || item.category?.refName || item.categoryName || '',
             tags: item.tags || [],
             image: item.image,
             
             // Additional product details
-            weight: item.weight,
-            weightUnit: item.weightUnit?.name || item.weightUnit,
-            upcCode: item.upcCode,
+            weight: parseFloat(item.weight) || 0,
+            weightUnit: item.weightUnit?.name || item.weightUnit || '',
+            upcCode: item.upcCode || '',
             
             // Custom fields (NetSuite custom fields)
-            customFields: item.customFieldList?.customField || [],
+            customFields: (() => {
+              if (item.customFieldList?.customField) {
+                return Array.isArray(item.customFieldList.customField) ? item.customFieldList.customField : [item.customFieldList.customField]
+              }
+              return []
+            })(),
             
             // Date information
             createdAt: item.createdDate,
             updatedAt: item.lastModifiedDate,
             lastModified: item.lastModifiedDate,
+            
+            // Internal IDs for reference
+            internalId: item.id,
+            externalId: item.externalId,
             
             // Store complete raw data for reference
             rawData: item

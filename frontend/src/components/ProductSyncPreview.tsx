@@ -46,6 +46,19 @@ interface Product {
   customFields?: any[]
   createdAt?: string
   updatedAt?: string
+  
+  // Inventory fields
+  quantityAvailable?: number
+  quantityOnHand?: number
+  quantityBackOrdered?: number
+  quantityCommitted?: number
+  quantityOnOrder?: number
+  reorderPoint?: number
+  preferredStockLevel?: number
+  
+  // System fields
+  internalId?: string
+  externalId?: string
 }
 
 interface FetchFilters {
@@ -1200,67 +1213,105 @@ export default function ProductSyncPreview() {
                   <Space direction="vertical" style={{ width: '100%' }} size="middle">
                     <Card size="small">
                       <Row gutter={[16, 16]}>
-                        {detailsProduct.manufacturer && (
-                          <Col span={12}>
-                            <Text type="secondary">Manufacturer:</Text><br />
-                            <Text strong>{detailsProduct.manufacturer}</Text>
-                          </Col>
-                        )}
-                        {detailsProduct.vendor && (
-                          <Col span={12}>
-                            <Text type="secondary">Vendor:</Text><br />
-                            <Text strong>{detailsProduct.vendor}</Text>
-                          </Col>
-                        )}
-                        {detailsProduct.brand && (
-                          <Col span={12}>
-                            <Text type="secondary">Brand:</Text><br />
-                            <Text strong>{detailsProduct.brand}</Text>
-                          </Col>
-                        )}
-                        {detailsProduct.productGroup && (
-                          <Col span={12}>
-                            <Text type="secondary">Product Group:</Text><br />
-                            <Text strong>{detailsProduct.productGroup}</Text>
-                          </Col>
-                        )}
-                        {detailsProduct.division && (
-                          <Col span={12}>
-                            <Text type="secondary">Division:</Text><br />
-                            <Text strong>{detailsProduct.division}</Text>
-                          </Col>
-                        )}
-                        {detailsProduct.subsidiary && (
-                          <Col span={12}>
-                            <Text type="secondary">Subsidiary:</Text><br />
-                            <Text strong>{detailsProduct.subsidiary}</Text>
-                          </Col>
-                        )}
-                        {detailsProduct.productType && (
-                          <Col span={12}>
-                            <Text type="secondary">Product Type:</Text><br />
-                            <Text strong>{detailsProduct.productType}</Text>
-                          </Col>
-                        )}
-                        {detailsProduct.category && (
-                          <Col span={12}>
-                            <Text type="secondary">Category:</Text><br />
-                            <Text strong>{detailsProduct.category}</Text>
-                          </Col>
-                        )}
+                        <Col span={12}>
+                          <Text type="secondary">Manufacturer:</Text><br />
+                          <Text strong>{detailsProduct.manufacturer || 'N/A'}</Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Vendor:</Text><br />
+                          <Text strong>{detailsProduct.vendor || 'N/A'}</Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Brand:</Text><br />
+                          <Text strong>{detailsProduct.brand || 'N/A'}</Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Product Group/Class:</Text><br />
+                          <Text strong>{detailsProduct.productGroup || 'N/A'}</Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Division/Department:</Text><br />
+                          <Text strong>{detailsProduct.division || 'N/A'}</Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Subsidiary:</Text><br />
+                          <Text strong>{detailsProduct.subsidiary || 'N/A'}</Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Product Type:</Text><br />
+                          <Text strong>{detailsProduct.productType || 'N/A'}</Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Category:</Text><br />
+                          <Text strong>{detailsProduct.category || 'N/A'}</Text>
+                        </Col>
                       </Row>
                     </Card>
                   </Space>
                 </TabPane>
                 
                 <TabPane tab="Inventory" key="inventory">
-                  <Card size="small">
+                  <Card title="Inventory Summary" size="small" style={{ marginBottom: 16 }}>
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Statistic 
+                          title="Available" 
+                          value={detailsProduct.quantityAvailable ?? detailsProduct.inventory ?? 0} 
+                          valueStyle={{ color: '#3f8600' }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic 
+                          title="On Hand" 
+                          value={detailsProduct.quantityOnHand ?? 0} 
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic 
+                          title="Committed" 
+                          value={detailsProduct.quantityCommitted ?? 0} 
+                          valueStyle={{ color: '#cf1322' }}
+                        />
+                      </Col>
+                    </Row>
+                    <Row gutter={16} style={{ marginTop: 16 }}>
+                      <Col span={8}>
+                        <Statistic 
+                          title="On Order" 
+                          value={detailsProduct.quantityOnOrder ?? 0} 
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic 
+                          title="Back Ordered" 
+                          value={detailsProduct.quantityBackOrdered ?? 0} 
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic 
+                          title="Reorder Point" 
+                          value={detailsProduct.reorderPoint ?? 0} 
+                        />
+                      </Col>
+                    </Row>
+                    {detailsProduct.preferredStockLevel && detailsProduct.preferredStockLevel > 0 && (
+                      <Row gutter={16} style={{ marginTop: 16 }}>
+                        <Col span={8}>
+                          <Statistic 
+                            title="Preferred Stock Level" 
+                            value={detailsProduct.preferredStockLevel} 
+                          />
+                        </Col>
+                      </Row>
+                    )}
+                  </Card>
+                  
+                  <Card title="Product Details" size="small">
                     <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                      <Statistic title="Available Quantity" value={detailsProduct.inventory} />
-                      {detailsProduct.weight && (
+                      {(detailsProduct.weight && detailsProduct.weight > 0) && (
                         <div>
                           <Text type="secondary">Weight:</Text><br />
-                          <Text strong>{detailsProduct.weight} {detailsProduct.weightUnit || ''}</Text>
+                          <Text strong>{detailsProduct.weight} {detailsProduct.weightUnit || 'lbs'}</Text>
                         </div>
                       )}
                       {detailsProduct.upcCode && (
@@ -1276,20 +1327,62 @@ export default function ProductSyncPreview() {
                 <TabPane tab="System Info" key="system">
                   <Card size="small">
                     <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                      <div>
-                        <Text type="secondary">Platform:</Text><br />
-                        <Tag color="blue">{detailsProduct.platform.toUpperCase()}</Tag>
-                      </div>
-                      {detailsProduct.createdAt && (
-                        <div>
-                          <Text type="secondary">Created:</Text><br />
-                          <Text>{new Date(detailsProduct.createdAt).toLocaleString()}</Text>
-                        </div>
-                      )}
-                      {detailsProduct.updatedAt && (
-                        <div>
-                          <Text type="secondary">Last Updated:</Text><br />
-                          <Text>{new Date(detailsProduct.updatedAt).toLocaleString()}</Text>
+                      <Row gutter={[16, 16]}>
+                        <Col span={12}>
+                          <Text type="secondary">Platform:</Text><br />
+                          <Tag color="blue">{detailsProduct.platform.toUpperCase()}</Tag>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Status:</Text><br />
+                          <Tag color={detailsProduct.status === 'active' ? 'green' : 'orange'}>
+                            {detailsProduct.status.toUpperCase()}
+                          </Tag>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Internal ID:</Text><br />
+                          <Text copyable>{detailsProduct.internalId || detailsProduct.id}</Text>
+                        </Col>
+                        {detailsProduct.externalId && (
+                          <Col span={12}>
+                            <Text type="secondary">External ID:</Text><br />
+                            <Text copyable>{detailsProduct.externalId}</Text>
+                          </Col>
+                        )}
+                        <Col span={12}>
+                          <Text type="secondary">SKU:</Text><br />
+                          <Text copyable>{detailsProduct.sku}</Text>
+                        </Col>
+                        {detailsProduct.createdAt && (
+                          <Col span={12}>
+                            <Text type="secondary">Created Date:</Text><br />
+                            <Text>{new Date(detailsProduct.createdAt).toLocaleString()}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.updatedAt && (
+                          <Col span={12}>
+                            <Text type="secondary">Last Modified:</Text><br />
+                            <Text>{new Date(detailsProduct.updatedAt).toLocaleString()}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.lastModified && (
+                          <Col span={12}>
+                            <Text type="secondary">Last Modified (Alt):</Text><br />
+                            <Text>{new Date(detailsProduct.lastModified).toLocaleString()}</Text>
+                          </Col>
+                        )}
+                      </Row>
+                      
+                      {detailsProduct.customFields && detailsProduct.customFields.length > 0 && (
+                        <div style={{ marginTop: 16 }}>
+                          <Text strong>Custom Fields ({detailsProduct.customFields.length}):</Text>
+                          <div style={{ marginTop: 8, maxHeight: '200px', overflow: 'auto' }}>
+                            {detailsProduct.customFields.map((field: any, index: number) => (
+                              <div key={index} style={{ padding: '4px 0', borderBottom: '1px solid #f0f0f0' }}>
+                                <Text type="secondary">{field.scriptId || field.internalId}:</Text>{' '}
+                                <Text>{field.value || 'N/A'}</Text>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </Space>
