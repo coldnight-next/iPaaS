@@ -60,6 +60,7 @@ export default function SyncManagement() {
   const [savePatternModalVisible, setSavePatternModalVisible] = useState(false)
   const [currentFilters, setCurrentFilters] = useState<any>({})
   const [populatingPattern, setPopulatingPattern] = useState<string | null>(null)
+  const [savingPattern, setSavingPattern] = useState(false)
   const [form] = Form.useForm()
 
   useEffect(() => {
@@ -114,8 +115,12 @@ export default function SyncManagement() {
   }
 
   const savePattern = async () => {
+    setSavingPattern(true)
     try {
+      console.log('Starting pattern save...')
       const values = await form.validateFields()
+      console.log('Form values:', values)
+      
       const { data, error } = await supabase
         .from('saved_search_patterns')
         .insert([{
@@ -123,14 +128,28 @@ export default function SyncManagement() {
           ...values,
           filters: currentFilters
         }])
+        .select()
 
+      console.log('Insert result:', { data, error })
+      
       if (error) throw error
+      
       message.success('Search pattern saved!')
       setSavePatternModalVisible(false)
       form.resetFields()
-      loadSavedPatterns()
+      await loadSavedPatterns()
     } catch (error: any) {
-      message.error('Failed to save pattern: ' + error.message)
+      console.error('Error saving pattern:', error)
+      
+      // Better error handling
+      if (error.errorFields) {
+        // Validation error
+        message.error('Please fill in all required fields')
+      } else {
+        message.error('Failed to save pattern: ' + (error.message || 'Unknown error'))
+      }
+    } finally {
+      setSavingPattern(false)
     }
   }
 
@@ -546,8 +565,13 @@ export default function SyncManagement() {
           title="Create Search Pattern"
           open={savePatternModalVisible}
           onOk={savePattern}
-          onCancel={() => setSavePatternModalVisible(false)}
+          onCancel={() => {
+            setSavePatternModalVisible(false)
+            form.resetFields()
+          }}
+          confirmLoading={savingPattern}
           width={600}
+          okText="Save Pattern"
         >
           <Form form={form} layout="vertical">
             <Alert
