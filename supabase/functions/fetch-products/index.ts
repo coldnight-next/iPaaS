@@ -196,16 +196,23 @@ serve(async (req) => {
           'nonInventoryItem', 
           'assemblyItem',
           'serviceItem',
-          'itemGroup'
+          'itemGroup',
+          'kitItem',
+          'lotNumberedInventoryItem',
+          'serializedInventoryItem'
         ]
         
         let fetchSucceeded = false
         let lastError: string = ''
+        const attemptedTypes: string[] = []
+        
+        console.log(`[fetch-products] Attempting to fetch item ID ${filters.itemId} across ${itemTypes.length} item types...`)
         
         // Try each item type until we find the right one
         for (const itemType of itemTypes) {
           try {
             endpoint = `${baseUrl}/${itemType}/${filters.itemId}?expandSubResources=true`
+            console.log(`[fetch-products] Trying ${itemType}...`)
             
             const response = await fetch(endpoint, {
               method: 'GET',
@@ -216,24 +223,34 @@ serve(async (req) => {
               }
             })
             
+            attemptedTypes.push(itemType)
+            
             if (response.ok) {
               const data = await response.json()
               items = [data]
               fetchSucceeded = true
-              console.log(`[fetch-products] Successfully fetched item ${filters.itemId} as type ${itemType}`)
+              console.log(`[fetch-products] ✅ SUCCESS! Found item ${filters.itemId} as type ${itemType}`)
               break
             } else {
-              lastError = `${response.status}: ${await response.text()}`
+              const errorText = await response.text()
+              lastError = `${response.status}: ${errorText}`
+              console.log(`[fetch-products] ❌ ${itemType}: ${response.status} - ${errorText.substring(0, 100)}`)
             }
           } catch (error) {
             lastError = error instanceof Error ? error.message : 'Unknown error'
-            console.log(`[fetch-products] Failed to fetch as ${itemType}: ${lastError}`)
+            console.log(`[fetch-products] ❌ ${itemType} Exception: ${lastError}`)
+            attemptedTypes.push(itemType)
           }
         }
         
         if (!fetchSucceeded) {
-          console.error(`[fetch-products] Could not fetch item ${filters.itemId} as any known type. Last error: ${lastError}`)
-          throw new Error(`Item ${filters.itemId} not found or not accessible. Last error: ${lastError}`)
+          const errorMsg = `Item ${filters.itemId} not found in NetSuite.\n\nAttempted types: ${attemptedTypes.join(', ')}\n\nLast error: ${lastError}\n\nPossible reasons:\n1. Item ID doesn't exist\n2. Item type not supported\n3. Permission issues\n4. Item is inactive or deleted`
+          console.error(`[fetch-products] ❌ FAILED TO FIND ITEM ${filters.itemId}`)
+          console.error(`[fetch-products] Attempted: ${attemptedTypes.join(', ')}`)
+          console.error(`[fetch-products] Last error: ${lastError}`)
+          // Don't throw - instead set results with helpful error info
+          results.netsuite = []
+          // Continue to allow Shopify search to work
         }
       } else {
         // For list queries, search across multiple item types if search term provided
@@ -439,6 +456,8 @@ serve(async (req) => {
       }
     } catch (error) {
       console.error('[fetch-products] NetSuite error', error)
+      // Set empty results so function doesn't fail completely
+      results.netsuite = []
     }
   }
 
