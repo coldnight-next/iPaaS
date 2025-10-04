@@ -4,12 +4,13 @@ import { supabase, db, type Connection } from '../lib/supabase'
 import { Avatar, Badge, Button, Card, Dropdown, Statistic, Table, Form, Input, Typography, Alert, Space, Tag, Row, Col, Steps, message, Checkbox, Modal, Select, Switch } from 'antd'
 import {
   UserOutlined, LogoutOutlined, DashboardOutlined, LinkOutlined, SettingOutlined,
-   SyncOutlined, UsergroupAddOutlined,
+   SyncOutlined, UsergroupAddOutlined, LockOutlined,
    ToolOutlined, MonitorOutlined, ApiOutlined, CloudSyncOutlined, DatabaseOutlined
 } from '@ant-design/icons'
 import { FileTextOutlined } from '@ant-design/icons'
 import FieldMappingManager from '../components/FieldMappingManager'
 import MonitoringDashboard from '../components/MonitoringDashboard'
+import ManualConnectionSetup from '../components/ManualConnectionSetup'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -326,6 +327,11 @@ export default function Dashboard() {
       key: 'connections',
       icon: <LinkOutlined />,
       label: 'Platform Connections',
+    },
+    {
+      key: 'manual-setup',
+      icon: <LockOutlined />,
+      label: 'Manual Setup',
     },
     {
       key: 'setup-wizard',
@@ -768,6 +774,11 @@ export default function Dashboard() {
                   </Col>
                 </Row>
           </div>
+        )}
+
+        {/* Manual Setup Page */}
+        {activeTab === 'manual-setup' && (
+          <ManualConnectionSetup onConnectionSaved={loadConnections} />
         )}
 
         {/* Setup Wizard Page */}
