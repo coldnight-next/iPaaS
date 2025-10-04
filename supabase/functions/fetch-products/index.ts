@@ -114,7 +114,12 @@ serve(async (req) => {
       const accountId = netsuiteConnection.metadata.account_id
 
       // NetSuite REST API endpoint for items
-      const endpoint = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/inventoryItem`
+      let endpoint = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/inventoryItem`
+      
+      // If itemId is specified, fetch single item
+      if (filters.itemId) {
+        endpoint = `${endpoint}/${filters.itemId}`
+      }
 
       const response = await fetch(endpoint, {
         method: 'GET',
@@ -126,7 +131,18 @@ serve(async (req) => {
 
       if (response.ok) {
         const data = await response.json()
-        let products = (data.items || []).map((item: any) => ({
+        
+        // Handle single item response vs list response
+        let items = []
+        if (filters.itemId) {
+          // Single item response
+          items = [data]
+        } else {
+          // List response
+          items = data.items || []
+        }
+        
+        let products = items.map((item: any) => ({
           id: item.id,
           name: item.displayName || item.itemId,
           sku: item.itemId,
@@ -138,8 +154,10 @@ serve(async (req) => {
           rawData: item
         }))
         
-        // Apply filters
-        products = applyFilters(products, filters)
+        // Apply filters (only if not fetching by ID)
+        if (!filters.itemId) {
+          products = applyFilters(products, filters)
+        }
         results.netsuite = products
       } else {
         console.error('[fetch-products] NetSuite fetch failed', response.status, await response.text())
@@ -155,7 +173,12 @@ serve(async (req) => {
       const credentials = await decryptJson(shopifyConnection.credentials.encrypted)
       const shopDomain = shopifyConnection.metadata.shop_domain
 
-      const endpoint = `https://${shopDomain}/admin/api/2024-01/products.json`
+      let endpoint = `https://${shopDomain}/admin/api/2024-01/products.json`
+      
+      // If itemId is specified, fetch single product
+      if (filters.itemId) {
+        endpoint = `https://${shopDomain}/admin/api/2024-01/products/${filters.itemId}.json`
+      }
 
       const response = await fetch(endpoint, {
         method: 'GET',
@@ -167,7 +190,18 @@ serve(async (req) => {
 
       if (response.ok) {
         const data = await response.json()
-        let products = (data.products || []).map((product: any) => {
+        
+        // Handle single product response vs list response
+        let productsData = []
+        if (filters.itemId) {
+          // Single product response
+          productsData = [data.product]
+        } else {
+          // List response
+          productsData = data.products || []
+        }
+        
+        let products = productsData.map((product: any) => {
           const variant = product.variants?.[0]
           return {
             id: product.id.toString(),
@@ -184,8 +218,10 @@ serve(async (req) => {
           }
         })
         
-        // Apply filters
-        products = applyFilters(products, filters)
+        // Apply filters (only if not fetching by ID)
+        if (!filters.itemId) {
+          products = applyFilters(products, filters)
+        }
         results.shopify = products
       } else {
         console.error('[fetch-products] Shopify fetch failed', response.status, await response.text())

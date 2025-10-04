@@ -36,6 +36,7 @@ interface FetchFilters {
   inventoryMax?: number
   category?: string
   searchTerm?: string
+  itemId?: string
 }
 
 interface SyncMapping {
@@ -539,7 +540,27 @@ export default function ProductSyncPreview() {
               </Space>
               {showFilters && (
                 <Card size="small" style={{ backgroundColor: '#fff' }}>
+                  <Alert
+                    message="Quick Tip"
+                    description="Use Item ID to fetch a single specific product, or use other filters to fetch multiple products."
+                    type="info"
+                    showIcon
+                    closable
+                    style={{ marginBottom: 16 }}
+                  />
                   <Row gutter={16}>
+                    <Col span={12}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Text strong>Item ID (Fetch Single Product):</Text>
+                        <Input
+                          placeholder="Enter NetSuite or Shopify Item ID"
+                          value={fetchFilters.itemId}
+                          onChange={(e) => setFetchFilters({ ...fetchFilters, itemId: e.target.value })}
+                          allowClear
+                        />
+                        <Text type="secondary" style={{ fontSize: '12px' }}>Leave empty to fetch multiple products with filters below</Text>
+                      </Space>
+                    </Col>
                     <Col span={12}>
                       <Space direction="vertical" style={{ width: '100%' }}>
                         <Text strong>Product Status:</Text>
@@ -549,6 +570,7 @@ export default function ProductSyncPreview() {
                           style={{ width: '100%' }}
                           value={fetchFilters.status}
                           onChange={(value) => setFetchFilters({ ...fetchFilters, status: value })}
+                          disabled={!!fetchFilters.itemId}
                         >
                           <Select.Option value="active">Active</Select.Option>
                           <Select.Option value="draft">Draft</Select.Option>
@@ -556,6 +578,8 @@ export default function ProductSyncPreview() {
                         </Select>
                       </Space>
                     </Col>
+                  </Row>
+                  <Row gutter={16} style={{ marginTop: 16 }}>
                     <Col span={12}>
                       <Space direction="vertical" style={{ width: '100%' }}>
                         <Text strong>Price Range:</Text>
@@ -565,6 +589,7 @@ export default function ProductSyncPreview() {
                             prefix="$"
                             value={fetchFilters.priceMin}
                             onChange={(value) => setFetchFilters({ ...fetchFilters, priceMin: value || undefined })}
+                            disabled={!!fetchFilters.itemId}
                           />
                           <Text>to</Text>
                           <InputNumber
@@ -572,12 +597,11 @@ export default function ProductSyncPreview() {
                             prefix="$"
                             value={fetchFilters.priceMax}
                             onChange={(value) => setFetchFilters({ ...fetchFilters, priceMax: value || undefined })}
+                            disabled={!!fetchFilters.itemId}
                           />
                         </Space>
                       </Space>
                     </Col>
-                  </Row>
-                  <Row gutter={16} style={{ marginTop: 16 }}>
                     <Col span={12}>
                       <Space direction="vertical" style={{ width: '100%' }}>
                         <Text strong>Inventory Range:</Text>
@@ -586,16 +610,20 @@ export default function ProductSyncPreview() {
                             placeholder="Min"
                             value={fetchFilters.inventoryMin}
                             onChange={(value) => setFetchFilters({ ...fetchFilters, inventoryMin: value || undefined })}
+                            disabled={!!fetchFilters.itemId}
                           />
                           <Text>to</Text>
                           <InputNumber
                             placeholder="Max"
                             value={fetchFilters.inventoryMax}
                             onChange={(value) => setFetchFilters({ ...fetchFilters, inventoryMax: value || undefined })}
+                            disabled={!!fetchFilters.itemId}
                           />
                         </Space>
                       </Space>
                     </Col>
+                  </Row>
+                  <Row gutter={16} style={{ marginTop: 16 }}>
                     <Col span={12}>
                       <Space direction="vertical" style={{ width: '100%' }}>
                         <Text strong>Search Term:</Text>
@@ -603,6 +631,7 @@ export default function ProductSyncPreview() {
                           placeholder="Search in product name or SKU"
                           value={fetchFilters.searchTerm}
                           onChange={(e) => setFetchFilters({ ...fetchFilters, searchTerm: e.target.value })}
+                          disabled={!!fetchFilters.itemId}
                         />
                       </Space>
                     </Col>
