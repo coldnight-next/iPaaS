@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug NetSuite Product Fetch</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .info {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug NetSuite Product Fetch</h1>
+        <p>This tool helps you test the fetch-products edge function directly.</p>
+        
+        <label for="supabaseUrl">Supabase URL:</label>
+        <input type="text" id="supabaseUrl" placeholder="https://your-project.supabase.co" />
+        
+        <label for="accessToken">Access Token (from browser):</label>
+        <input type="password" id="accessToken" placeholder="Paste your session access token" />
+        <small style="color: #666;">Open browser console → localStorage.getItem('supabase.auth.token') → copy access_token</small>
+        
+        <label for="itemId">Item ID to Search:</label>
+        <input type="text" id="itemId" placeholder="42782" value="42782" />
+        
+        <button id="testBtn" onclick="testFetch()">🚀 Test Fetch</button>
+        
+        <div id="results" class="results" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function testFetch() {
+            const supabaseUrl = document.getElementById('supabaseUrl').value.trim();
+            const accessToken = document.getElementById('accessToken').value.trim();
+            const itemId = document.getElementById('itemId').value.trim();
+            const resultsDiv = document.getElementById('results');
+            const testBtn = document.getElementById('testBtn');
+            
+            // Validate inputs
+            if (!supabaseUrl || !accessToken || !itemId) {
+                resultsDiv.className = 'results error';
+                resultsDiv.style.display = 'block';
+                resultsDiv.textContent = '❌ Please fill in all fields!';
+                return;
+            }
+            
+            // Show loading state
+            testBtn.disabled = true;
+            testBtn.textContent = '⏳ Fetching...';
+            resultsDiv.className = 'results info';
+            resultsDiv.style.display = 'block';
+            resultsDiv.textContent = `Attempting to fetch item ${itemId} from NetSuite...\n\nURL: ${supabaseUrl}/functions/v1/fetch-products\n\nRequest payload:\n${JSON.stringify({ platforms: ['netsuite'], filters: { itemId } }, null, 2)}`;
+            
+            try {
+                const response = await fetch(`${supabaseUrl}/functions/v1/fetch-products`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({
+                        platforms: ['netsuite', 'shopify'],
+                        filters: {
+                            itemId: itemId
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultsDiv.className = 'results success';
+                    resultsDiv.textContent = `✅ SUCCESS! Response (${response.status}):\n\n${JSON.stringify(data, null, 2)}`;
+                    
+                    if (data.netsuite && data.netsuite.length > 0) {
+                        resultsDiv.textContent += `\n\n🎉 Found ${data.netsuite.length} NetSuite product(s)!`;
+                    } else {
+                        resultsDiv.textContent += `\n\n⚠️ No NetSuite products found. Check the Edge Function logs in Supabase dashboard.`;
+                    }
+                } else {
+                    resultsDiv.className = 'results error';
+                    resultsDiv.textContent = `❌ ERROR (${response.status}):\n\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultsDiv.className = 'results error';
+                resultsDiv.textContent = `❌ EXCEPTION:\n\n${error.message}\n\nStack:\n${error.stack}`;
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = '🚀 Test Fetch';
+            }
+        }
+        
+        // Try to auto-fill Supabase URL from env
+        document.getElementById('supabaseUrl').value = 'https://your-project.supabase.co';
+        
+        // Add helper to get token from console
+        console.log('%c💡 To get your access token:', 'color: blue; font-size: 16px; font-weight: bold;');
+        console.log('Run this in console: JSON.parse(localStorage.getItem("sb-" + Object.keys(localStorage).find(k => k.startsWith("sb-")))).access_token');
+    </script>
+</body>
+</html>

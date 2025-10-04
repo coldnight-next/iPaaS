@@ -712,6 +712,20 @@ export default function Dashboard() {
                   }
                   style={{ marginBottom: '16px' }}
                 >
+                  <Alert
+                    message="Authentication Issue Detected"
+                    description={
+                      <div>
+                        <p>Your NetSuite connection returned a <strong>401 Unauthorized</strong> error.</p>
+                        <p>This typically means your access token has expired (tokens expire after ~1 hour).</p>
+                        <p><strong>Solution:</strong> Delete your NetSuite connection below and reconnect to get a fresh token.</p>
+                      </div>
+                    }
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: '16px' }}
+                    closable
+                  />
                   <Table
                     dataSource={connections}
                     columns={[
@@ -753,6 +767,56 @@ export default function Dashboard() {
                           }
                           return '—'
                         },
+                      },
+                      {
+                        title: 'Actions',
+                        key: 'actions',
+                        render: (_: any, record: any) => (
+                          <Space>
+                            {record.platform === 'netsuite' && (
+                              <Button
+                                type="primary"
+                                size="small"
+                                onClick={() => {
+                                  setNetsuiteAccountId(record.metadata?.account_id || '')
+                                  handleNetSuiteConnect()
+                                }}
+                              >
+                                Reconnect
+                              </Button>
+                            )}
+                            {record.platform === 'shopify' && (
+                              <Button
+                                type="primary"
+                                size="small"
+                                onClick={() => {
+                                  setShopifyDomain(record.metadata?.shop_domain || '')
+                                  handleShopifyConnect()
+                                }}
+                              >
+                                Reconnect
+                              </Button>
+                            )}
+                            <Button
+                              danger
+                              size="small"
+                              onClick={async () => {
+                                const { error } = await supabase
+                                  .from('connections')
+                                  .delete()
+                                  .eq('id', record.id)
+                                if (!error) {
+                                  message.success('Connection deleted')
+                                  loadConnections()
+                                } else {
+                                  message.error('Failed to delete connection')
+                                }
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </Space>
+                        ),
                       },
                     ]}
                     locale={{ emptyText: 'No connections yet. Start by connecting Shopify below.' }}
