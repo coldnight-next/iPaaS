@@ -318,117 +318,84 @@ export default function Dashboard() {
   // Always show admin menu in development mode for testing
   const showAdminMenu = isAdmin || import.meta.env.DEV
 
-  // Build menu items with admin sections for development
+  // Build consolidated menu items for better UX
   const menuItems = [
     {
       key: 'dashboard',
       icon: <DashboardOutlined />,
-      label: 'Dashboard',
-    },
-    {
-      key: 'connections',
-      icon: <LinkOutlined />,
-      label: 'Platform Connections',
-    },
-    {
-      key: 'manual-setup',
-      icon: <LockOutlined />,
-      label: 'Manual Setup',
-    },
-    {
-      key: 'setup-wizard',
-      icon: <SettingOutlined />,
-      label: 'Setup Wizard',
+      label: 'Overview',
     },
     {
       type: 'divider' as const,
-      key: 'divider-1',
+      key: 'divider-setup',
     },
+    // Setup Section
+    {
+      key: 'connections',
+      icon: <LinkOutlined />,
+      label: 'Connections',
+    },
+    {
+      type: 'divider' as const,
+      key: 'divider-sync',
+    },
+    // Sync Section
     {
       key: 'products',
       icon: <DatabaseOutlined />,
-      label: 'Products',
-    },
-    {
-      key: 'inventory',
-      icon: <DatabaseOutlined />,
-      label: 'Inventory',
+      label: 'Product Sync',
     },
     {
       key: 'orders',
       icon: <FileTextOutlined />,
-      label: 'Orders',
+      label: 'Order Sync',
     },
     {
-      key: 'mappings',
-      icon: <LinkOutlined />,
-      label: 'Product Mappings',
-    },
-    {
-      key: 'field-mapping',
-      icon: <SettingOutlined />,
-      label: 'Field Mapping',
-    },
-    {
-      key: 'sync-profiles',
-      icon: <SettingOutlined />,
-      label: 'Sync Profiles',
+      key: 'inventory',
+      icon: <DatabaseOutlined />,
+      label: 'Inventory Sync',
     },
     {
       key: 'sync-management',
       icon: <CloudSyncOutlined />,
-      label: 'Sync Management',
+      label: 'Sync Automation',
     },
     {
       type: 'divider' as const,
-      key: 'divider-2',
+      key: 'divider-config',
     },
+    // Configuration Section
     {
-      key: 'admin-dashboard',
-      icon: <DashboardOutlined />,
-      label: 'Admin Dashboard',
-    },
-    {
-      key: 'configurations',
+      key: 'field-mapping',
       icon: <SettingOutlined />,
-      label: 'Configurations',
-    },
-    {
-      key: 'sync-scheduling',
-      icon: <SettingOutlined />,
-      label: 'Sync Scheduling',
-    },
-    {
-      key: 'sync-history',
-      icon: <FileTextOutlined />,
-      label: 'Sync History',
-    },
-    {
-      key: 'user-management',
-      icon: <UsergroupAddOutlined />,
-      label: 'User Management',
-    },
-    {
-      key: 'system-settings',
-      icon: <ToolOutlined />,
-      label: 'System Settings',
+      label: 'Field Mappings',
     },
     {
       key: 'monitoring',
       icon: <MonitorOutlined />,
       label: 'Monitoring',
     },
-    {
-      key: 'api-management',
-      icon: <ApiOutlined />,
-      label: 'API Management',
-    },
-    {
-      key: 'logs',
-      icon: <FileTextOutlined />,
-      label: 'Logs',
-    },
   ]
+
+  // Add admin menu items only for admins
+  if (showAdminMenu) {
+    menuItems.push(
+      {
+        type: 'divider' as const,
+        key: 'divider-admin',
+      },
+      {
+        key: 'user-management',
+        icon: <UsergroupAddOutlined />,
+        label: 'Users',
+      },
+      {
+        key: 'system-settings',
+        icon: <ToolOutlined />,
+        label: 'Settings',
+      }
+    )
+  }
 
   const userMenuItems = [
     {
@@ -483,26 +450,61 @@ export default function Dashboard() {
         }} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
           {sidebarCollapsed ? '→' : '←'}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {menuItems.map(item => {
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {menuItems.map((item, index) => {
             if (item.type === 'divider') {
-              return <hr key={item.key} style={{ borderColor: '#1890ff', margin: '16px 0' }} />;
+              // Add section headers before dividers
+              let sectionTitle = ''
+              if (item.key === 'divider-setup') sectionTitle = 'SETUP'
+              else if (item.key === 'divider-sync') sectionTitle = 'SYNC'
+              else if (item.key === 'divider-config') sectionTitle = 'CONFIGURE'
+              else if (item.key === 'divider-admin') sectionTitle = 'ADMIN'
+              
+              return (
+                <div key={item.key}>
+                  {sectionTitle && !sidebarCollapsed && (
+                    <div style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      color: '#8c8c8c',
+                      padding: '12px 12px 4px 12px',
+                      letterSpacing: '0.5px',
+                      marginTop: index === 0 ? '0' : '8px'
+                    }}>
+                      {sectionTitle}
+                    </div>
+                  )}
+                  {sidebarCollapsed && <hr style={{ borderColor: '#1890ff', margin: '8px 0' }} />}
+                </div>
+              )
             }
             return (
               <div
                 key={item.key}
                 onClick={() => item.key && setActiveTab(item.key)}
                 style={{
-                  padding: '8px 12px',
+                  padding: '10px 12px',
                   cursor: 'pointer',
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   background: activeTab === item.key ? '#1890ff' : 'transparent',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
+                  gap: '12px',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                  transition: 'all 0.2s ease',
+                  fontSize: '14px'
                 }}
                 title={sidebarCollapsed ? item.label : undefined}
+                onMouseEnter={(e) => {
+                  if (activeTab !== item.key) {
+                    e.currentTarget.style.background = 'rgba(24, 144, 255, 0.15)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeTab !== item.key) {
+                    e.currentTarget.style.background = 'transparent'
+                  }
+                }}
               >
                 {item.icon}
                 {!sidebarCollapsed && <span>{item.label}</span>}
@@ -515,19 +517,30 @@ export default function Dashboard() {
       {/* Main Content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid #d9d9d9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Badge
-              status={activeConnections.length > 0 ? 'success' : 'warning'}
-              text="System Status"
-            />
-            {showAdminMenu && (
+        <div style={{ 
+          padding: '16px 24px', 
+          borderBottom: '1px solid #d9d9d9', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          background: 'linear-gradient(to right, #fafafa, #ffffff)'
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <Typography.Title level={4} style={{ margin: 0 }}>
+              {menuItems.find(item => item.key === activeTab)?.label || 'Dashboard'}
+            </Typography.Title>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Badge
-                status="processing"
-                text="Admin Mode"
-                style={{ marginLeft: '8px' }}
+                status={activeConnections.length > 0 ? 'success' : 'warning'}
+                text={`${activeConnections.length} connection${activeConnections.length !== 1 ? 's' : ''}`}
               />
-            )}
+              {showAdminMenu && (
+                <Badge
+                  status="processing"
+                  text="Admin Mode"
+                />
+              )}
+            </div>
           </div>
           <Dropdown
             menu={{
@@ -544,64 +557,6 @@ export default function Dashboard() {
 
         {/* Content */}
         <div style={{ flex: 1, padding: '24px', overflow: 'auto' }}>
-        {showAdminMenu && activeTab.startsWith('admin') && (
-          <Card style={{ marginBottom: '24px' }}>
-            <Typography.Title level={4} style={{ marginBottom: '16px' }}>
-              Admin Navigation
-            </Typography.Title>
-            <Space wrap>
-              <Button
-                type={activeTab === 'admin-dashboard' ? 'primary' : 'default'}
-                onClick={() => setActiveTab('admin-dashboard')}
-                icon={<DashboardOutlined />}
-              >
-                Dashboard
-              </Button>
-              <Button
-                type={activeTab === 'configurations' ? 'primary' : 'default'}
-                onClick={() => setActiveTab('configurations')}
-                icon={<SettingOutlined />}
-              >
-                Configurations
-              </Button>
-              <Button
-                type={activeTab === 'sync-management' ? 'primary' : 'default'}
-                onClick={() => setActiveTab('sync-management')}
-                icon={<CloudSyncOutlined />}
-              >
-                Sync Management
-              </Button>
-              <Button
-                type={activeTab === 'user-management' ? 'primary' : 'default'}
-                onClick={() => setActiveTab('user-management')}
-                icon={<UsergroupAddOutlined />}
-              >
-                User Management
-              </Button>
-              <Button
-                type={activeTab === 'system-settings' ? 'primary' : 'default'}
-                onClick={() => setActiveTab('system-settings')}
-                icon={<ToolOutlined />}
-              >
-                System Settings
-              </Button>
-              <Button
-                type={activeTab === 'monitoring' ? 'primary' : 'default'}
-                onClick={() => setActiveTab('monitoring')}
-                icon={<MonitorOutlined />}
-              >
-                Monitoring
-              </Button>
-              <Button
-                type={activeTab === 'api-management' ? 'primary' : 'default'}
-                onClick={() => setActiveTab('api-management')}
-                icon={<ApiOutlined />}
-              >
-                API Management
-              </Button>
-            </Space>
-          </Card>
-        )}
         {oauthBanner && (
           <Alert
             message={oauthBanner.message || (oauthBanner.status === 'success' ? 'Authorization completed successfully.' : 'Authorization failed. Check the logs for more details.')}
@@ -612,60 +567,142 @@ export default function Dashboard() {
           />
         )}
 
-        {activeTab === 'dashboard' && !activeTab.startsWith('admin') && (
+        {activeTab === 'dashboard' && (
           <div>
-            {showAdminMenu && (
-              <Alert
-                message="Admin Mode Active"
-                description="You have access to admin features. Use the sidebar menu to navigate to admin sections."
-                type="info"
-                showIcon
-                style={{ marginBottom: '24px' }}
-              />
-            )}
+            <Typography.Paragraph type="secondary" style={{ marginBottom: '24px', fontSize: '16px' }}>
+              Welcome to SyncFlow! Monitor your integration status and manage synchronization between Shopify and NetSuite.
+            </Typography.Paragraph>
+            
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} lg={6}>
-                <Card>
+                <Card hoverable>
                   <Statistic
-                    title="Connected Shopify stores"
+                    title="Shopify Stores"
                     value={activeConnections.filter(connection => connection.platform === 'shopify').length}
-                    prefix={<LinkOutlined />}
+                    prefix={<LinkOutlined style={{ color: '#52c41a' }} />}
+                    valueStyle={{ color: '#52c41a' }}
                   />
                 </Card>
               </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="NetSuite tokens"
-                  value={activeConnections.filter(connection => connection.platform === 'netsuite').length}
-                  prefix={<SettingOutlined />}
+              <Col xs={24} sm={12} lg={6}>
+                <Card hoverable>
+                  <Statistic
+                    title="NetSuite Accounts"
+                    value={activeConnections.filter(connection => connection.platform === 'netsuite').length}
+                    prefix={<DatabaseOutlined style={{ color: '#1890ff' }} />}
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <Card hoverable>
+                  <Statistic
+                    title="Active Syncs"
+                    value={syncLogs.filter(log => log.status === 'running').length}
+                    prefix={<SyncOutlined style={{ color: '#faad14' }} spin={syncLogs.filter(log => log.status === 'running').length > 0} />}
+                    valueStyle={{ color: '#faad14' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <Card hoverable>
+                  <Statistic
+                    title="Last Sync"
+                    value={syncLogs.length > 0 ? new Date(syncLogs[0].started_at).toLocaleTimeString() : 'Never'}
+                    prefix={<DashboardOutlined />}
+                  />
+                </Card>
+              </Col>
+            </Row>
+            
+            {/* Quick Actions */}
+            <Card title="Quick Actions" style={{ marginTop: '24px' }}>
+              <Space size="large" wrap>
+                <Button 
+                  type="primary" 
+                  icon={<SyncOutlined />}
+                  size="large"
+                  onClick={() => setActiveTab('products')}
+                >
+                  Sync Products
+                </Button>
+                <Button 
+                  icon={<FileTextOutlined />}
+                  size="large"
+                  onClick={() => setActiveTab('orders')}
+                >
+                  Sync Orders
+                </Button>
+                <Button 
+                  icon={<CloudSyncOutlined />}
+                  size="large"
+                  onClick={() => setActiveTab('sync-management')}
+                >
+                  Manage Automation
+                </Button>
+                <Button 
+                  icon={<LinkOutlined />}
+                  size="large"
+                  onClick={() => setActiveTab('connections')}
+                >
+                  Add Connection
+                </Button>
+              </Space>
+            </Card>
+            
+            {/* Recent Activity */}
+            {syncLogs.length > 0 && (
+              <Card title="Recent Sync Activity" style={{ marginTop: '24px' }}>
+                <Table
+                  dataSource={syncLogs.slice(0, 5)}
+                  columns={[
+                    {
+                      title: 'Type',
+                      dataIndex: 'sync_type',
+                      key: 'sync_type',
+                      render: (type: string) => (
+                        <Tag color="blue">{type}</Tag>
+                      )
+                    },
+                    {
+                      title: 'Status',
+                      dataIndex: 'status',
+                      key: 'status',
+                      render: (status: string) => (
+                        <Tag color={
+                          status === 'completed' ? 'green' :
+                          status === 'running' ? 'orange' : 'red'
+                        }>
+                          {status}
+                        </Tag>
+                      )
+                    },
+                    {
+                      title: 'Items',
+                      dataIndex: 'items_processed',
+                      key: 'items',
+                      render: (processed: number, record: any) => (
+                        <span>{record.items_succeeded || 0}/{processed || 0}</span>
+                      )
+                    },
+                    {
+                      title: 'Time',
+                      dataIndex: 'started_at',
+                      key: 'time',
+                      render: (time: string) => new Date(time).toLocaleString()
+                    }
+                  ]}
+                  pagination={false}
+                  size="small"
+                  rowKey="id"
                 />
               </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Pending connections"
-                  value={connections.filter(connection => connection.status === 'authorizing').length}
-                  prefix={<SyncOutlined />}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Last refresh"
-                  value={new Date().toLocaleTimeString()}
-                  prefix={<DashboardOutlined />}
-                />
-              </Card>
-            </Col>
-          </Row>
+            )}
           </div>
         )}
 
         {activeTab === 'connections' && (
-          <div style={{ padding: '24px 0' }}>
+          <div>
                 <Card
                   title="Connected platforms"
                   extra={
