@@ -26,6 +26,26 @@ interface Product {
   rawData?: any
   staged?: boolean
   stagedChanges?: Partial<Product>
+  
+  // Extended NetSuite fields
+  basePrice?: number
+  msrp?: number
+  cost?: number
+  priceLevels?: Record<string, number>
+  manufacturer?: string
+  vendor?: string
+  brand?: string
+  productGroup?: string
+  division?: string
+  subsidiary?: string
+  productType?: string
+  category?: string
+  weight?: number
+  weightUnit?: string
+  upcCode?: string
+  customFields?: any[]
+  createdAt?: string
+  updatedAt?: string
 }
 
 interface FetchFilters {
@@ -82,6 +102,8 @@ export default function ProductSyncPreview() {
   const [editDrawerVisible, setEditDrawerVisible] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [syncingProductId, setSyncingProductId] = useState<string | null>(null)
+  const [detailsDrawerVisible, setDetailsDrawerVisible] = useState(false)
+  const [detailsProduct, setDetailsProduct] = useState<Product | null>(null)
   const [form] = Form.useForm()
 
   const loadProducts = async () => {
@@ -300,6 +322,11 @@ export default function ProductSyncPreview() {
     setPreviewModalVisible(true)
   }
 
+  const showDetails = (product: Product) => {
+    setDetailsProduct(product)
+    setDetailsDrawerVisible(true)
+  }
+
   const sourceProducts = syncDirection === 'netsuite-to-shopify' ? netsuiteProducts : shopifyProducts
   const filteredProducts = sourceProducts.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -416,14 +443,21 @@ export default function ProductSyncPreview() {
     {
       title: 'Actions',
       key: 'actions',
-      width: 200,
+      width: 280,
       fixed: 'right' as const,
       render: (_: any, record: Product) => {
         const isStaged = stagedProducts.has(record.id)
         const isSyncing = syncingProductId === record.id
         
         return (
-          <Space size="small">
+          <Space size="small" wrap>
+            <Button
+              size="small"
+              icon={<DatabaseOutlined />}
+              onClick={() => showDetails(record)}
+            >
+              Details
+            </Button>
             {!isStaged ? (
               <Button
                 size="small"
@@ -1086,6 +1120,191 @@ export default function ProductSyncPreview() {
                 <Input.TextArea rows={4} />
               </Form.Item>
             </Form>
+          )}
+        </Drawer>
+
+        {/* Product Details Drawer */}
+        <Drawer
+          title={<Space><DatabaseOutlined /> Product Details</Space>}
+          width={800}
+          open={detailsDrawerVisible}
+          onClose={() => setDetailsDrawerVisible(false)}
+        >
+          {detailsProduct && (
+            <div>
+              <Tabs defaultActiveKey="overview">
+                <TabPane tab="Overview" key="overview">
+                  <Card size="small" style={{ marginBottom: 16 }}>
+                    <Space direction="vertical" style={{ width: '100%' }} size="large">
+                      {detailsProduct.image && (
+                        <img src={detailsProduct.image} alt={detailsProduct.name} style={{ width: '100%', maxWidth: '300px' }} />
+                      )}
+                      <div>
+                        <Title level={4}>{detailsProduct.name}</Title>
+                        <Tag color={detailsProduct.status === 'active' ? 'green' : 'orange'}>{detailsProduct.status}</Tag>
+                      </div>
+                      <Row gutter={16}>
+                        <Col span={12}><Text strong>SKU:</Text> {detailsProduct.sku}</Col>
+                        <Col span={12}><Text strong>ID:</Text> {detailsProduct.id}</Col>
+                      </Row>
+                      {detailsProduct.description && (
+                        <div>
+                          <Text strong>Description:</Text>
+                          <Paragraph>{detailsProduct.description}</Paragraph>
+                        </div>
+                      )}
+                    </Space>
+                  </Card>
+                </TabPane>
+                
+                <TabPane tab="Pricing" key="pricing">
+                  <Card title="Price Information" size="small" style={{ marginBottom: 16 }}>
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Statistic title="Base Price" value={detailsProduct.basePrice || detailsProduct.price} prefix="$" precision={2} />
+                        </Col>
+                        <Col span={12}>
+                          <Statistic title="Cost" value={detailsProduct.cost || 0} prefix="$" precision={2} />
+                        </Col>
+                      </Row>
+                      {detailsProduct.msrp && (
+                        <Row gutter={16}>
+                          <Col span={12}>
+                            <Statistic title="MSRP" value={detailsProduct.msrp} prefix="$" precision={2} />
+                          </Col>
+                        </Row>
+                      )}
+                    </Space>
+                  </Card>
+                  
+                  {detailsProduct.priceLevels && Object.keys(detailsProduct.priceLevels).length > 0 && (
+                    <Card title="Price Levels" size="small">
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        {Object.entries(detailsProduct.priceLevels).map(([level, price]) => (
+                          <Row key={level} gutter={16} style={{ borderBottom: '1px solid #f0f0f0', padding: '8px 0' }}>
+                            <Col span={12}>
+                              <Text strong>{level}</Text>
+                            </Col>
+                            <Col span={12} style={{ textAlign: 'right' }}>
+                              <Text>${(price as number).toFixed(2)}</Text>
+                            </Col>
+                          </Row>
+                        ))}
+                      </Space>
+                    </Card>
+                  )}
+                </TabPane>
+                
+                <TabPane tab="Classification" key="classification">
+                  <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                    <Card size="small">
+                      <Row gutter={[16, 16]}>
+                        {detailsProduct.manufacturer && (
+                          <Col span={12}>
+                            <Text type="secondary">Manufacturer:</Text><br />
+                            <Text strong>{detailsProduct.manufacturer}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.vendor && (
+                          <Col span={12}>
+                            <Text type="secondary">Vendor:</Text><br />
+                            <Text strong>{detailsProduct.vendor}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.brand && (
+                          <Col span={12}>
+                            <Text type="secondary">Brand:</Text><br />
+                            <Text strong>{detailsProduct.brand}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.productGroup && (
+                          <Col span={12}>
+                            <Text type="secondary">Product Group:</Text><br />
+                            <Text strong>{detailsProduct.productGroup}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.division && (
+                          <Col span={12}>
+                            <Text type="secondary">Division:</Text><br />
+                            <Text strong>{detailsProduct.division}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.subsidiary && (
+                          <Col span={12}>
+                            <Text type="secondary">Subsidiary:</Text><br />
+                            <Text strong>{detailsProduct.subsidiary}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.productType && (
+                          <Col span={12}>
+                            <Text type="secondary">Product Type:</Text><br />
+                            <Text strong>{detailsProduct.productType}</Text>
+                          </Col>
+                        )}
+                        {detailsProduct.category && (
+                          <Col span={12}>
+                            <Text type="secondary">Category:</Text><br />
+                            <Text strong>{detailsProduct.category}</Text>
+                          </Col>
+                        )}
+                      </Row>
+                    </Card>
+                  </Space>
+                </TabPane>
+                
+                <TabPane tab="Inventory" key="inventory">
+                  <Card size="small">
+                    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                      <Statistic title="Available Quantity" value={detailsProduct.inventory} />
+                      {detailsProduct.weight && (
+                        <div>
+                          <Text type="secondary">Weight:</Text><br />
+                          <Text strong>{detailsProduct.weight} {detailsProduct.weightUnit || ''}</Text>
+                        </div>
+                      )}
+                      {detailsProduct.upcCode && (
+                        <div>
+                          <Text type="secondary">UPC Code:</Text><br />
+                          <Text strong>{detailsProduct.upcCode}</Text>
+                        </div>
+                      )}
+                    </Space>
+                  </Card>
+                </TabPane>
+                
+                <TabPane tab="System Info" key="system">
+                  <Card size="small">
+                    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                      <div>
+                        <Text type="secondary">Platform:</Text><br />
+                        <Tag color="blue">{detailsProduct.platform.toUpperCase()}</Tag>
+                      </div>
+                      {detailsProduct.createdAt && (
+                        <div>
+                          <Text type="secondary">Created:</Text><br />
+                          <Text>{new Date(detailsProduct.createdAt).toLocaleString()}</Text>
+                        </div>
+                      )}
+                      {detailsProduct.updatedAt && (
+                        <div>
+                          <Text type="secondary">Last Updated:</Text><br />
+                          <Text>{new Date(detailsProduct.updatedAt).toLocaleString()}</Text>
+                        </div>
+                      )}
+                    </Space>
+                  </Card>
+                </TabPane>
+                
+                <TabPane tab="Raw Data" key="raw">
+                  <Card size="small">
+                    <pre style={{ maxHeight: '500px', overflow: 'auto', fontSize: '12px' }}>
+                      {JSON.stringify(detailsProduct.rawData, null, 2)}
+                    </pre>
+                  </Card>
+                </TabPane>
+              </Tabs>
+            </div>
           )}
         </Drawer>
       </Card>

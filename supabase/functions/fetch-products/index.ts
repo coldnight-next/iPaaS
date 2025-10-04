@@ -186,16 +186,20 @@ serve(async (req) => {
       // NetSuite REST API endpoint for items
       let endpoint = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/inventoryItem`
       
-      // If itemId is specified, fetch single item
+      // If itemId is specified, fetch single item with expanded fields
       if (filters.itemId) {
-        endpoint = `${endpoint}/${filters.itemId}`
+        endpoint = `${endpoint}/${filters.itemId}?expandSubResources=true`
+      } else {
+        // For list queries, use expand to get related data
+        endpoint = `${endpoint}?expandSubResources=true&limit=1000`
       }
 
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${credentials.access_token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'prefer': 'transient'
         }
       })
 
@@ -212,25 +216,76 @@ serve(async (req) => {
           items = data.items || []
         }
         
-        let products = items.map((item: any) => ({
-          id: item.id,
-          name: item.displayName || item.itemId,
-          sku: item.itemId,
-          price: item.basePrice || 0,
-          inventory: item.quantityAvailable || 0,
-          platform: 'netsuite',
-          status: item.isInactive ? 'inactive' : 'active',
-          description: item.description,
-          vendor: item.vendor?.name || item.vendorName,
-          productType: item.itemType || item.class?.name,
-          category: item.category?.name,
-          tags: item.tags || [],
-          image: item.image,
-          createdAt: item.createdDate,
-          updatedAt: item.lastModifiedDate,
-          lastModified: item.lastModifiedDate,
-          rawData: item
-        }))
+        let products = items.map((item: any) => {
+          // Extract price levels
+          const priceLevels: any = {}
+          if (item.pricing) {
+            // NetSuite pricing can be in various formats
+            if (item.pricing.pricingMatrix) {
+              item.pricing.pricingMatrix.forEach((level: any) => {
+                const levelName = level.priceLevel?.name || level.priceLevel || `Level ${level.id}`
+                priceLevels[levelName] = level.price || level.rate
+              })
+            }
+            if (item.pricing.priceList) {
+              item.pricing.priceList.forEach((priceItem: any) => {
+                const levelName = priceItem.priceLevel?.name || priceItem.pricelevel?.name || `Level ${priceItem.id}`
+                priceLevels[levelName] = priceItem.price || priceItem.rate
+              })
+            }
+          }
+          
+          // Handle price fields from different possible locations
+          const basePrice = item.basePrice || item.cost || item.purchasePrice || 0
+          const msrp = item.msrp || item.retailPrice || null
+          const cost = item.cost || item.purchaseCost || null
+          
+          return {
+            id: item.id,
+            name: item.displayName || item.itemId,
+            sku: item.itemId,
+            price: basePrice,
+            inventory: item.quantityAvailable || item.quantityOnHand || 0,
+            platform: 'netsuite',
+            status: item.isInactive ? 'inactive' : 'active',
+            description: item.description || item.salesDescription || item.storeDescription,
+            
+            // Pricing information
+            basePrice: basePrice,
+            msrp: msrp,
+            cost: cost,
+            priceLevels: priceLevels,
+            
+            // Classification fields
+            vendor: item.vendor?.name || item.vendorName || item.manufacturer,
+            manufacturer: item.manufacturer?.name || item.manufacturerName || item.vendor?.name,
+            brand: item.customFieldList?.customField?.find((f: any) => f.scriptId === 'custitem_brand')?.value || item.brand,
+            productGroup: item.class?.name || item.className || item.itemGroup,
+            division: item.department?.name || item.departmentName || item.division,
+            subsidiary: item.subsidiary?.name || item.subsidiaryName || (Array.isArray(item.subsidiaryList?.subsidiary) ? item.subsidiaryList.subsidiary.map((s: any) => s.name || s).join(', ') : null),
+            
+            productType: item.itemType || item.class?.name,
+            category: item.category?.name || item.categoryName,
+            tags: item.tags || [],
+            image: item.image,
+            
+            // Additional product details
+            weight: item.weight,
+            weightUnit: item.weightUnit?.name || item.weightUnit,
+            upcCode: item.upcCode,
+            
+            // Custom fields (NetSuite custom fields)
+            customFields: item.customFieldList?.customField || [],
+            
+            // Date information
+            createdAt: item.createdDate,
+            updatedAt: item.lastModifiedDate,
+            lastModified: item.lastModifiedDate,
+            
+            // Store complete raw data for reference
+            rawData: item
+          }
+        })
         
         // Apply filters (only if not fetching by ID)
         if (!filters.itemId) {
