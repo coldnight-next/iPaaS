@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Card, Table, Button, Space, Tag, Spin, Alert, Typography, Row, Col, Select, Input, Checkbox, Statistic, Tabs, Modal, message, Radio } from 'antd'
-import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined, SwapOutlined } from '@ant-design/icons'
+import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined, SwapOutlined, DatabaseOutlined } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -49,18 +49,18 @@ export default function ProductSyncPreview() {
   const [previewModalVisible, setPreviewModalVisible] = useState(false)
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
   const [syncDirection, setSyncDirection] = useState<'netsuite-to-shopify' | 'shopify-to-netsuite' | 'bidirectional'>('netsuite-to-shopify')
-
-  useEffect(() => {
-    if (session) {
-      loadProducts()
-    }
-  }, [session])
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
 
   const loadProducts = async () => {
-    if (!session) return
+    if (!session) {
+      message.error('Please log in to fetch products')
+      return
+    }
     
     setLoading(true)
     setError(null)
+    setHasLoadedOnce(true)
+    
     try {
       const response = await fetch(`${FUNCTIONS_BASE}/fetch-products`, {
         method: 'POST',
@@ -83,6 +83,7 @@ export default function ProductSyncPreview() {
       
       // Auto-generate mappings based on SKU
       generateMappings(data.netsuite || [], data.shopify || [])
+      message.success(`Loaded ${data.netsuite?.length || 0} NetSuite products and ${data.shopify?.length || 0} Shopify products`)
     } catch (error: any) {
       console.error('Error loading products:', error)
       setError(error.message || 'Failed to load products')
@@ -315,142 +316,185 @@ export default function ProductSyncPreview() {
           <SyncOutlined spin={loading} /> Product Sync Preview
         </Title>
         <Paragraph>
-          Review products and their mappings before syncing. Products are automatically matched by SKU.
+          Configure your sync settings and fetch products to preview the synchronization.
         </Paragraph>
 
-        {/* Sync Direction Selector */}
+        {/* Sync Settings Card - Always Visible */}
         <Card style={{ marginBottom: 24, backgroundColor: '#f0f5ff' }}>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Text strong>Sync Direction:</Text>
-            <Radio.Group
-              value={syncDirection}
-              onChange={(e) => {
-                setSyncDirection(e.target.value)
-                generateMappings(netsuiteProducts, shopifyProducts)
-              }}
-              buttonStyle="solid"
-              size="large"
-            >
-              <Radio.Button value="netsuite-to-shopify">
-                <Space>
-                  <DatabaseOutlined />
-                  NetSuite → Shopify
-                  <ArrowRightOutlined />
-                </Space>
-              </Radio.Button>
-              <Radio.Button value="shopify-to-netsuite">
-                <Space>
-                  <ArrowRightOutlined style={{ transform: 'rotate(180deg)' }} />
-                  Shopify → NetSuite
-                  <DatabaseOutlined />
-                </Space>
-              </Radio.Button>
-              <Radio.Button value="bidirectional">
-                <Space>
-                  <SwapOutlined />
-                  Bidirectional
-                </Space>
-              </Radio.Button>
-            </Radio.Group>
-            <Alert
-              message={
-                syncDirection === 'netsuite-to-shopify'
-                  ? 'Products from NetSuite will be created or updated in Shopify'
-                  : syncDirection === 'shopify-to-netsuite'
-                  ? 'Products from Shopify will be created or updated in NetSuite'
-                  : 'Products will be synced in both directions based on last modified date'
-              }
-              type="info"
-              showIcon
-            />
+          <Space direction="vertical" style={{ width: '100%' }} size="large">
+            {/* Sync Direction Selector */}
+            <div>
+              <Text strong style={{ fontSize: '16px', display: 'block', marginBottom: 12 }}>1. Select Sync Direction:</Text>
+              <Radio.Group
+                value={syncDirection}
+                onChange={(e) => {
+                  setSyncDirection(e.target.value)
+                  if (hasLoadedOnce) {
+                    generateMappings(netsuiteProducts, shopifyProducts)
+                  }
+                }}
+                buttonStyle="solid"
+                size="large"
+              >
+                <Radio.Button value="netsuite-to-shopify">
+                  <Space>
+                    <DatabaseOutlined />
+                    NetSuite → Shopify
+                  </Space>
+                </Radio.Button>
+                <Radio.Button value="shopify-to-netsuite">
+                  <Space>
+                    Shopify → NetSuite
+                  </Space>
+                </Radio.Button>
+                <Radio.Button value="bidirectional">
+                  <Space>
+                    <SwapOutlined />
+                    Bidirectional
+                  </Space>
+                </Radio.Button>
+              </Radio.Group>
+              <Alert
+                message={
+                  syncDirection === 'netsuite-to-shopify'
+                    ? 'Products from NetSuite will be created or updated in Shopify'
+                    : syncDirection === 'shopify-to-netsuite'
+                    ? 'Products from Shopify will be created or updated in NetSuite'
+                    : 'Products will be synced in both directions based on last modified date'
+                }
+                type="info"
+                showIcon
+                style={{ marginTop: 12 }}
+              />
+            </div>
+
+            {/* Fetch Products Button */}
+            <div>
+              <Text strong style={{ fontSize: '16px', display: 'block', marginBottom: 12 }}>2. Fetch Products:</Text>
+              <Button
+                type="primary"
+                size="large"
+                icon={<SyncOutlined spin={loading} />}
+                onClick={loadProducts}
+                loading={loading}
+                disabled={!session}
+              >
+                {loading ? 'Fetching Products...' : hasLoadedOnce ? 'Refresh Products' : 'Fetch Products from Both Platforms'}
+              </Button>
+              {!session && (
+                <Alert
+                  message="Please log in to fetch products"
+                  type="warning"
+                  showIcon
+                  style={{ marginTop: 12 }}
+                />
+              )}
+            </div>
           </Space>
         </Card>
 
-        {/* Statistics */}
-        <Row gutter={16} style={{ marginBottom: 24 }}>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="Total Selected"
-                value={stats.total}
-                prefix={<CheckCircleOutlined />}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="New Products"
-                value={stats.toCreate}
-                valueStyle={{ color: '#1890ff' }}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="Updates"
-                value={stats.toUpdate}
-                valueStyle={{ color: '#faad14' }}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title={syncDirection === 'netsuite-to-shopify' ? 'Source (NetSuite)' : 'Target (NetSuite)'}
-                value={netsuiteProducts.length}
-                prefix={<DatabaseOutlined />}
-              />
-            </Card>
-          </Col>
-        </Row>
+        {/* Statistics - Only show after products are loaded */}
+        {hasLoadedOnce && (
+          <Row gutter={16} style={{ marginBottom: 24 }}>
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="Total Selected"
+                  value={stats.total}
+                  prefix={<CheckCircleOutlined />}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="New Products"
+                  value={stats.toCreate}
+                  valueStyle={{ color: '#1890ff' }}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="Updates"
+                  value={stats.toUpdate}
+                  valueStyle={{ color: '#faad14' }}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title={syncDirection === 'netsuite-to-shopify' ? 'NetSuite Products' : 'Shopify Products'}
+                  value={sourceProducts.length}
+                  prefix={<DatabaseOutlined />}
+                />
+              </Card>
+            </Col>
+          </Row>
+        )}
 
-        {/* Actions */}
-        <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-          <Space>
-            <Search
-              placeholder="Search products..."
-              allowClear
-              style={{ width: 300 }}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              prefix={<SearchOutlined />}
-            />
-            <Button icon={<FilterOutlined />}>Filters</Button>
-          </Space>
-          <Space>
-            <Button onClick={loadProducts} loading={loading}>
-              Refresh
-            </Button>
-            <Button
-              type="primary"
-              icon={<ArrowRightOutlined />}
-              onClick={handleSync}
-              loading={syncing}
-              disabled={selectedProducts.length === 0}
-            >
-              Sync {selectedProducts.length} Products
-            </Button>
-          </Space>
-        </Space>
+        {/* Actions & Products Table - Only show after products are loaded */}
+        {hasLoadedOnce && (
+          <>
+            <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
+              <Space>
+                <Search
+                  placeholder="Search products..."
+                  allowClear
+                  style={{ width: 300 }}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  prefix={<SearchOutlined />}
+                />
+                <Button icon={<FilterOutlined />}>Filters</Button>
+              </Space>
+              <Space>
+                <Button onClick={loadProducts} loading={loading}>
+                  Refresh
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<ArrowRightOutlined />}
+                  onClick={handleSync}
+                  loading={syncing}
+                  disabled={selectedProducts.length === 0}
+                >
+                  Sync {selectedProducts.length} Products
+                </Button>
+              </Space>
+            </Space>
 
-        {/* Products Table */}
-        {loading ? (
+            {/* Products Table */}
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '60px' }}>
+                <Spin size="large" />
+                <Paragraph style={{ marginTop: 16 }}>Loading products from NetSuite and Shopify...</Paragraph>
+              </div>
+            ) : (
+              <Table
+                columns={columns}
+                dataSource={filteredProducts}
+                rowKey="id"
+                pagination={{
+                  pageSize: 20,
+                  showSizeChanger: true,
+                  showTotal: (total) => `Total ${total} products`
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {/* Initial State - Before First Fetch */}
+        {!hasLoadedOnce && !loading && (
           <div style={{ textAlign: 'center', padding: '60px' }}>
-            <Spin size="large" />
-            <Paragraph style={{ marginTop: 16 }}>Loading products from NetSuite and Shopify...</Paragraph>
+            <DatabaseOutlined style={{ fontSize: '64px', color: '#d9d9d9', marginBottom: 16 }} />
+            <Title level={4} type="secondary">Ready to Fetch Products</Title>
+            <Paragraph type="secondary">
+              Configure your sync direction above and click "Fetch Products" to get started.
+            </Paragraph>
           </div>
-        ) : (
-          <Table
-            columns={columns}
-            dataSource={filteredProducts}
-            rowKey="id"
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
-              showTotal: (total) => `Total ${total} products`
-            }}
-          />
         )}
 
         {/* Preview Modal */}
