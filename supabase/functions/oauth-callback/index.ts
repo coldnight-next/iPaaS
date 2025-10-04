@@ -293,7 +293,8 @@ async function handleNetSuiteTokenExchange(
     codeLength: code?.length
   })
 
-  const tokenResponse = await fetch(`https://system.netsuite.com/app/login/oauth2/token.nl?account=${accountId}`, {
+  // NetSuite OAuth 2.0 token endpoint
+  const tokenResponse = await fetch('https://system.netsuite.com/app/login/oauth2/token.nl', {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
