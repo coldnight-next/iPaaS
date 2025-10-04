@@ -1,12 +1,15 @@
 const allowedOrigin = Deno.env.get('OAUTH_ALLOWED_ORIGIN') || '*'
 
+// Default CORS headers for simple cases
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+}
+
 export function buildCorsHeaders(origin: string | null): HeadersInit {
   if (allowedOrigin === '*') {
-    return {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-      'Access-Control-Allow-Headers': 'authorization,content-type,sentry-trace,baggage'
-    }
+    return corsHeaders
   }
 
   const incomingOrigin = origin ?? ''
