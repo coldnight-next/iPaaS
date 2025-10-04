@@ -2323,5 +2323,3 @@ export default function Dashboard() {
     </div>
   )
 }
-
-export default App
