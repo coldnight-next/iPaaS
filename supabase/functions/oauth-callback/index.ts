@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
-import { decode as hexDecode } from 'https://deno.land/std@0.224.0/encoding/hex.ts'
+import { decodeHex } from 'https://deno.land/std@0.224.0/encoding/hex.ts'
 import { timingSafeEqual } from 'https://deno.land/std@0.224.0/crypto/timing_safe_equal.ts'
 import { withCors } from '../_shared/cors.ts'
 import { createSupabaseClient } from '../_shared/supabaseClient.ts'
@@ -40,7 +40,7 @@ async function verifyShopifyHmac(url: URL, secret: string): Promise<boolean> {
   const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const signed = await crypto.subtle.sign('HMAC', key, encoder.encode(payload))
   const expectedBytes = new Uint8Array(signed)
-  const providedBytes = new Uint8Array(hexDecode(hmac))
+  const providedBytes = decodeHex(hmac)
 
   if (expectedBytes.length !== providedBytes.length) {
     return false
