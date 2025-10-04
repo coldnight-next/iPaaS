@@ -68,6 +68,13 @@ serve(async (req) => {
     }
 
     const credentials = connection.credentials as any
+    const accountId = connection.metadata?.account_id
+    
+    if (!accountId) {
+      throw new Error('NetSuite account ID not found in connection metadata')
+    }
+    
+    console.log('Account ID:', accountId)
     let accessToken = credentials.access_token
 
     // Check if token needs refresh
@@ -75,7 +82,7 @@ serve(async (req) => {
       console.log('Access token expired, refreshing...')
       
       // Refresh the token
-      const tokenEndpoint = `https://${credentials.account_id}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`
+      const tokenEndpoint = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`
       
       const refreshResponse = await fetch(tokenEndpoint, {
         method: 'POST',
@@ -117,7 +124,7 @@ serve(async (req) => {
       console.log(`Fetching items from NetSuite saved search: ${pattern.netsuite_saved_search_id}`)
       
       // Fetch items from NetSuite saved search
-      const searchUrl = `https://${credentials.account_id}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`
+      const searchUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`
       
       // Use SuiteQL to query the saved search results
       const suiteQLQuery = `SELECT id, itemid, displayname, baseprice, quantityavailable FROM item WHERE id IN (SELECT id FROM item WHERE id IN (SELECT itemid FROM customsearch_${pattern.netsuite_saved_search_id}))`
@@ -152,7 +159,7 @@ serve(async (req) => {
       const itemTypes = ['inventoryItem', 'nonInventoryItem', 'assemblyItem', 'kitItem', 'serviceItem']
       
       for (const itemType of itemTypes) {
-        const baseUrl = `https://${credentials.account_id}.suitetalk.api.netsuite.com/services/rest/record/v1/${itemType}`
+        const baseUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/${itemType}`
         
         // Build query parameters
         const params = new URLSearchParams()
