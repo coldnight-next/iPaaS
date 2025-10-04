@@ -80,6 +80,18 @@ interface FetchFilters {
   hasImage?: boolean
   isActive?: boolean
   skuPattern?: string
+  
+  // NetSuite-specific filters
+  subsidiary?: string
+  division?: string
+  department?: string
+  classification?: string  // NetSuite class
+  location?: string
+  itemType?: string[]  // inventoryItem, nonInventoryItem, assemblyItem, kitItem, serviceItem
+  manufacturer?: string
+  brand?: string
+  productGroup?: string
+  inactive?: boolean  // true = show inactive only, false = show active only, undefined = show all
 }
 
 interface SyncMapping {
@@ -922,6 +934,176 @@ export default function ProductSyncPreview() {
                                     disabled={!!fetchFilters.itemId}
                                   />
                                   <Text type="secondary" style={{ fontSize: '12px' }}>Filter by last modified date range</Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                          </>
+                        )
+                      },
+                      {
+                        key: 'netsuite',
+                        label: <Text strong>NetSuite-Specific Filters</Text>,
+                        children: (
+                          <>
+                            <Alert
+                              message="NetSuite Fields"
+                              description="These filters are specific to NetSuite and help narrow down items based on your NetSuite configuration."
+                              type="info"
+                              showIcon
+                              style={{ marginBottom: 16 }}
+                            />
+                            <Row gutter={16}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Item Type:</Text>
+                                  <Select
+                                    mode="multiple"
+                                    placeholder="All item types"
+                                    style={{ width: '100%' }}
+                                    value={fetchFilters.itemType}
+                                    onChange={(value) => setFetchFilters({ ...fetchFilters, itemType: value })}
+                                    disabled={!!fetchFilters.itemId}
+                                  >
+                                    <Select.Option value="inventoryItem">Inventory Item</Select.Option>
+                                    <Select.Option value="nonInventoryItem">Non-Inventory Item</Select.Option>
+                                    <Select.Option value="assemblyItem">Assembly/Bill of Materials</Select.Option>
+                                    <Select.Option value="kitItem">Kit/Package</Select.Option>
+                                    <Select.Option value="serviceItem">Service</Select.Option>
+                                    <Select.Option value="itemGroup">Item Group</Select.Option>
+                                  </Select>
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Filter by NetSuite item type</Text>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Active Status:</Text>
+                                  <Select
+                                    placeholder="All items"
+                                    style={{ width: '100%' }}
+                                    value={fetchFilters.inactive === undefined ? undefined : fetchFilters.inactive ? 'inactive' : 'active'}
+                                    onChange={(value) => setFetchFilters({ 
+                                      ...fetchFilters, 
+                                      inactive: value === 'inactive' ? true : value === 'active' ? false : undefined 
+                                    })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  >
+                                    <Select.Option value="active">Active Only</Select.Option>
+                                    <Select.Option value="inactive">Inactive Only</Select.Option>
+                                  </Select>
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Filter by active/inactive status</Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                            <Row gutter={16} style={{ marginTop: 16 }}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Subsidiary:</Text>
+                                  <Input
+                                    placeholder="e.g., US Subsidiary, UK Branch"
+                                    value={fetchFilters.subsidiary}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, subsidiary: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>NetSuite subsidiary name or ID</Text>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Division:</Text>
+                                  <Input
+                                    placeholder="e.g., Retail, Wholesale"
+                                    value={fetchFilters.division}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, division: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>NetSuite division</Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                            <Row gutter={16} style={{ marginTop: 16 }}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Department:</Text>
+                                  <Input
+                                    placeholder="e.g., Sales, Marketing"
+                                    value={fetchFilters.department}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, department: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>NetSuite department</Text>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Class:</Text>
+                                  <Input
+                                    placeholder="e.g., Premium, Budget"
+                                    value={fetchFilters.classification}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, classification: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>NetSuite classification</Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                            <Row gutter={16} style={{ marginTop: 16 }}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Location:</Text>
+                                  <Input
+                                    placeholder="e.g., Main Warehouse, Store 01"
+                                    value={fetchFilters.location}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, location: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>NetSuite location</Text>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Manufacturer:</Text>
+                                  <Input
+                                    placeholder="e.g., Acme Corp"
+                                    value={fetchFilters.manufacturer}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, manufacturer: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Item manufacturer</Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                            <Row gutter={16} style={{ marginTop: 16 }}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Brand:</Text>
+                                  <Input
+                                    placeholder="e.g., Premium Brand"
+                                    value={fetchFilters.brand}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, brand: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Product brand</Text>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Product Group:</Text>
+                                  <Input
+                                    placeholder="e.g., Electronics, Apparel"
+                                    value={fetchFilters.productGroup}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, productGroup: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>NetSuite product group</Text>
                                 </Space>
                               </Col>
                             </Row>

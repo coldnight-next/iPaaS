@@ -99,7 +99,13 @@ serve(async (req) => {
       
       // Use the existing fetch-products logic with the pattern's filters
       const filters = pattern.filters
-      const itemTypes = ['inventoryItem', 'nonInventoryItem', 'assemblyItem', 'kitItem', 'serviceItem']
+      
+      // Use itemType filter if specified, otherwise fetch from all types
+      const itemTypes = filters.itemType && filters.itemType.length > 0 
+        ? filters.itemType 
+        : ['inventoryItem', 'nonInventoryItem', 'assemblyItem', 'kitItem', 'serviceItem']
+      
+      console.log('Fetching from item types:', itemTypes)
       
       for (const itemType of itemTypes) {
         const baseUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/${itemType}`
@@ -160,11 +166,41 @@ serve(async (req) => {
       sync_mode: 'delta',
       is_active: true,
       metadata: {
+        // Pricing
         price: item.baseprice || item.price,
+        cost: item.cost,
+        msrp: item.msrp,
+        
+        // Inventory
         inventory: item.quantityavailable || item.quantity,
-        source: 'saved_search',
+        quantityOnHand: item.quantityonhand,
+        quantityCommitted: item.quantitycommitted,
+        quantityOnOrder: item.quantityonorder,
+        reorderPoint: item.reorderpoint,
+        
+        // Classification
+        subsidiary: item.subsidiary?.name || item.subsidiary?.id,
+        division: item.division?.name || item.division?.id,
+        department: item.department?.name || item.department?.id,
+        class: item.class?.name || item.class?.id,
+        location: item.location?.name || item.location?.id,
+        
+        // Product info
+        manufacturer: item.manufacturer?.name || item.manufacturer,
+        vendor: item.vendor?.name || item.vendor,
+        brand: item.custitem_brand || item.brand,
+        productGroup: item.custitem_product_group || item.productgroup,
+        category: item.custitem_category || item.category,
+        
+        // Status
+        inactive: item.isinactive,
+        itemType: item.itemType || item.type,
+        
+        // Metadata
+        source: 'filter_pattern',
         pattern_id: patternId,
         pattern_name: pattern.name,
+        fetched_at: new Date().toISOString(),
       },
     }))
 
