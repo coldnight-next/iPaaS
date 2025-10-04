@@ -1,6 +1,7 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import * as oauth from 'https://deno.land/x/oauth4webapi@v2.0.0/mod.ts'
+import { decryptJson } from '../_shared/encryption.ts'
+import { proactiveTokenRefresh, refreshNetSuiteToken } from '../_shared/tokenRefresh.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -67,7 +68,8 @@ serve(async (req) => {
       throw new Error('NetSuite connection not found or not active')
     }
 
-    const credentials = connection.credentials as any
+    // Decrypt credentials
+    let credentials = await decryptJson(connection.credentials.encrypted)
     const accountId = connection.metadata?.account_id
     
     if (!accountId) {
@@ -75,47 +77,10 @@ serve(async (req) => {
     }
     
     console.log('Account ID:', accountId)
-    let accessToken = credentials.access_token
-
-    // Check if token needs refresh
-    if (credentials.expires_at && new Date(credentials.expires_at) <= new Date()) {
-      console.log('Access token expired, refreshing...')
-      
-      // Refresh the token
-      const tokenEndpoint = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`
-      
-      const refreshResponse = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Basic ${btoa(`${credentials.consumer_key}:${credentials.consumer_secret}`)}`,
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: credentials.refresh_token,
-        }),
-      })
-
-      if (!refreshResponse.ok) {
-        throw new Error('Failed to refresh access token')
-      }
-
-      const tokenData = await refreshResponse.json()
-      accessToken = tokenData.access_token
-
-      // Update stored credentials
-      await supabaseClient
-        .from('connections')
-        .update({
-          credentials: {
-            ...credentials,
-            access_token: tokenData.access_token,
-            expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', connection.id)
-    }
+    
+    // Proactively refresh token if it's about to expire
+    credentials.access_token = await proactiveTokenRefresh(connection.id, credentials)
+    const accessToken = credentials.access_token
 
     let items: any[] = []
 
