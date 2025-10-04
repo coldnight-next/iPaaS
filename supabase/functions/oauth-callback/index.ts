@@ -293,8 +293,12 @@ async function handleNetSuiteTokenExchange(
     codeLength: code?.length
   })
 
-  // NetSuite OAuth 2.0 token endpoint
-  const tokenResponse = await fetch('https://system.netsuite.com/app/login/oauth2/token.nl', {
+  // NetSuite OAuth 2.0 token endpoint - must use account-specific URL
+  // Format: https://{accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token
+  const tokenEndpoint = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`
+  console.log('[oauth-callback] Token endpoint:', tokenEndpoint)
+  
+  const tokenResponse = await fetch(tokenEndpoint, {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
