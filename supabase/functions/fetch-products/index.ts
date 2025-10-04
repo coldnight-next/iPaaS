@@ -293,78 +293,60 @@ serve(async (req) => {
           // Continue to allow Shopify search to work
         }
       } else {
-        // For list queries, search across multiple item types if search term provided
-        if (filters.searchTerm || filters.skuPattern) {
-          const searchTerm = filters.searchTerm || filters.skuPattern?.replace(/\*/g, '%') || ''
-          const itemTypes = ['inventoryItem', 'nonInventoryItem', 'assemblyItem', 'serviceItem']
-          
-          console.log(`[fetch-products] Searching for: "${searchTerm}" across ${itemTypes.length} item types`)
-          
-          // Search across all item types in parallel
-          const searchPromises = itemTypes.map(async (itemType) => {
-            try {
-              const queryParams = new URLSearchParams({
-                expandSubResources: 'true',
-                limit: '250',
-                q: searchTerm
-              })
-              
-              const searchEndpoint = `${baseUrl}/${itemType}?${queryParams.toString()}`
-              const response = await fetch(searchEndpoint, {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${credentials.access_token}`,
-                  'Content-Type': 'application/json',
-                  'prefer': 'transient'
-                }
-              })
-              
-              if (response.ok) {
-                const data = await response.json()
-                const foundItems = data.items || []
-                console.log(`[fetch-products] Found ${foundItems.length} items of type ${itemType}`)
-                return foundItems
-              }
-              return []
-            } catch (error) {
-              console.log(`[fetch-products] Error searching ${itemType}:`, error)
-              return []
+        // Determine which item types to query based on filters
+        const itemTypes = filters.itemType && filters.itemType.length > 0 
+          ? filters.itemType 
+          : ['inventoryItem', 'nonInventoryItem', 'assemblyItem', 'serviceItem']
+        
+        const searchTerm = filters.searchTerm || filters.skuPattern?.replace(/\*/g, '%') || ''
+        
+        console.log(`[fetch-products] Fetching from ${itemTypes.length} item type(s)${searchTerm ? ` with search: "${searchTerm}"` : ''}`)
+        
+        // Fetch from all specified item types in parallel
+        const fetchPromises = itemTypes.map(async (itemType) => {
+          try {
+            const queryParams = new URLSearchParams({
+              expandSubResources: 'true',
+              limit: '250'
+            })
+            
+            if (searchTerm) {
+              queryParams.append('q', searchTerm)
             }
-          })
-          
-          // Wait for all searches to complete and combine results
-          const searchResults = await Promise.all(searchPromises)
-          items = searchResults.flat()
-          console.log(`[fetch-products] Total search results: ${items.length} items`)
-        } else {
-          // No search term, just fetch inventory items
-          const queryParams = new URLSearchParams({
-            expandSubResources: 'true',
-            limit: '1000'
-          })
-          
-          endpoint = `${baseUrl}/inventoryItem?${queryParams.toString()}`
-        }
-      }
-
-      // For list queries, fetch from the endpoint (if not already populated by search)
-      if (!filters.itemId && items.length === 0 && endpoint) {
-        const response = await fetch(endpoint, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${credentials.access_token}`,
-            'Content-Type': 'application/json',
-            'prefer': 'transient'
+            
+            const fetchEndpoint = `${baseUrl}/${itemType}?${queryParams.toString()}`
+            const response = await fetch(fetchEndpoint, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${credentials.access_token}`,
+                'Content-Type': 'application/json',
+                'prefer': 'transient'
+              }
+            })
+            
+            if (response.ok) {
+              const data = await response.json()
+              const foundItems = data.items || []
+              console.log(`[fetch-products] Found ${foundItems.length} items of type ${itemType}`)
+              return foundItems
+            } else {
+              console.log(`[fetch-products] No items found for ${itemType}: ${response.status}`)
+            }
+            return []
+          } catch (error) {
+            console.log(`[fetch-products] Error fetching ${itemType}:`, error)
+            return []
           }
         })
-
-        if (response.ok) {
-          const data = await response.json()
-          items = data.items || []
-        } else {
-          console.error('[fetch-products] NetSuite list fetch failed', response.status, await response.text())
-        }
+        
+        // Wait for all fetches to complete and combine results
+        const fetchResults = await Promise.all(fetchPromises)
+        items = fetchResults.flat()
+        console.log(`[fetch-products] Total fetched: ${items.length} items`)
       }
+
+      // items array should already be populated by the above logic
+      // This fallback is no longer needed
       
       // items array is already populated for single item fetch
       if (items.length > 0) {
