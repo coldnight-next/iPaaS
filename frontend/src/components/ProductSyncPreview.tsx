@@ -672,8 +672,14 @@ export default function ProductSyncPreview() {
                         children: (
                           <>
                             <Alert
-                              message="Quick Tip"
-                              description="Use Item ID to fetch a single specific product, or combine other filters to fetch multiple products."
+                              message="Search Tips"
+                              description={
+                                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                                  <li><strong>Item ID:</strong> Enter a NetSuite internal ID (e.g., 42782) or Shopify product ID to fetch a single product</li>
+                                  <li><strong>Search Term:</strong> Search by SKU, product name, or description across all item types (inventory, non-inventory, assembly, service)</li>
+                                  <li><strong>SKU Pattern:</strong> Use wildcards (*) for flexible SKU matching (e.g., PROD-*-2024)</li>
+                                </ul>
+                              }
                               type="info"
                               showIcon
                               closable
@@ -684,12 +690,12 @@ export default function ProductSyncPreview() {
                                 <Space direction="vertical" style={{ width: '100%' }}>
                                   <Text strong>Item ID (Single Product):</Text>
                                   <Input
-                                    placeholder="Enter NetSuite or Shopify Item ID"
+                                    placeholder="e.g., 42782 (NetSuite ID) or 123456789 (Shopify ID)"
                                     value={fetchFilters.itemId}
                                     onChange={(e) => setFetchFilters({ ...fetchFilters, itemId: e.target.value })}
                                     allowClear
                                   />
-                                  <Text type="secondary" style={{ fontSize: '12px' }}>Fetches only this specific product</Text>
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Searches all NetSuite item types automatically</Text>
                                 </Space>
                               </Col>
                               <Col span={12}>
@@ -715,12 +721,13 @@ export default function ProductSyncPreview() {
                                 <Space direction="vertical" style={{ width: '100%' }}>
                                   <Text strong>Search Term:</Text>
                                   <Input
-                                    placeholder="Search in product name, SKU, or description"
+                                    placeholder="e.g., Widget, PROD-123, Acme Products"
                                     value={fetchFilters.searchTerm}
                                     onChange={(e) => setFetchFilters({ ...fetchFilters, searchTerm: e.target.value })}
                                     disabled={!!fetchFilters.itemId}
                                     prefix={<SearchOutlined />}
                                   />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Searches across SKU, name, and description in all item types</Text>
                                 </Space>
                               </Col>
                               <Col span={12}>

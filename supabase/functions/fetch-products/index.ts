@@ -184,37 +184,133 @@ serve(async (req) => {
       const accountId = netsuiteConnection.metadata.account_id
 
       // NetSuite REST API endpoint for items
-      let endpoint = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/inventoryItem`
+      const baseUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1`
       
-      // If itemId is specified, fetch single item with expanded fields
+      let endpoint: string
+      let items: any[] = []
+      
+      // If itemId is specified, try different item types
       if (filters.itemId) {
-        endpoint = `${endpoint}/${filters.itemId}?expandSubResources=true`
+        const itemTypes = [
+          'inventoryItem',
+          'nonInventoryItem', 
+          'assemblyItem',
+          'serviceItem',
+          'itemGroup'
+        ]
+        
+        let fetchSucceeded = false
+        let lastError: string = ''
+        
+        // Try each item type until we find the right one
+        for (const itemType of itemTypes) {
+          try {
+            endpoint = `${baseUrl}/${itemType}/${filters.itemId}?expandSubResources=true`
+            
+            const response = await fetch(endpoint, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${credentials.access_token}`,
+                'Content-Type': 'application/json',
+                'prefer': 'transient'
+              }
+            })
+            
+            if (response.ok) {
+              const data = await response.json()
+              items = [data]
+              fetchSucceeded = true
+              console.log(`[fetch-products] Successfully fetched item ${filters.itemId} as type ${itemType}`)
+              break
+            } else {
+              lastError = `${response.status}: ${await response.text()}`
+            }
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : 'Unknown error'
+            console.log(`[fetch-products] Failed to fetch as ${itemType}: ${lastError}`)
+          }
+        }
+        
+        if (!fetchSucceeded) {
+          console.error(`[fetch-products] Could not fetch item ${filters.itemId} as any known type. Last error: ${lastError}`)
+          throw new Error(`Item ${filters.itemId} not found or not accessible. Last error: ${lastError}`)
+        }
       } else {
-        // For list queries, use expand to get related data
-        endpoint = `${endpoint}?expandSubResources=true&limit=1000`
+        // For list queries, search across multiple item types if search term provided
+        if (filters.searchTerm || filters.skuPattern) {
+          const searchTerm = filters.searchTerm || filters.skuPattern?.replace(/\*/g, '%') || ''
+          const itemTypes = ['inventoryItem', 'nonInventoryItem', 'assemblyItem', 'serviceItem']
+          
+          console.log(`[fetch-products] Searching for: "${searchTerm}" across ${itemTypes.length} item types`)
+          
+          // Search across all item types in parallel
+          const searchPromises = itemTypes.map(async (itemType) => {
+            try {
+              const queryParams = new URLSearchParams({
+                expandSubResources: 'true',
+                limit: '250',
+                q: searchTerm
+              })
+              
+              const searchEndpoint = `${baseUrl}/${itemType}?${queryParams.toString()}`
+              const response = await fetch(searchEndpoint, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${credentials.access_token}`,
+                  'Content-Type': 'application/json',
+                  'prefer': 'transient'
+                }
+              })
+              
+              if (response.ok) {
+                const data = await response.json()
+                const foundItems = data.items || []
+                console.log(`[fetch-products] Found ${foundItems.length} items of type ${itemType}`)
+                return foundItems
+              }
+              return []
+            } catch (error) {
+              console.log(`[fetch-products] Error searching ${itemType}:`, error)
+              return []
+            }
+          })
+          
+          // Wait for all searches to complete and combine results
+          const searchResults = await Promise.all(searchPromises)
+          items = searchResults.flat()
+          console.log(`[fetch-products] Total search results: ${items.length} items`)
+        } else {
+          // No search term, just fetch inventory items
+          const queryParams = new URLSearchParams({
+            expandSubResources: 'true',
+            limit: '1000'
+          })
+          
+          endpoint = `${baseUrl}/inventoryItem?${queryParams.toString()}`
+        }
       }
 
-      const response = await fetch(endpoint, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${credentials.access_token}`,
-          'Content-Type': 'application/json',
-          'prefer': 'transient'
-        }
-      })
+      // For list queries, fetch from the endpoint (if not already populated by search)
+      if (!filters.itemId && items.length === 0 && endpoint) {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${credentials.access_token}`,
+            'Content-Type': 'application/json',
+            'prefer': 'transient'
+          }
+        })
 
-      if (response.ok) {
-        const data = await response.json()
-        
-        // Handle single item response vs list response
-        let items = []
-        if (filters.itemId) {
-          // Single item response
-          items = [data]
-        } else {
-          // List response
+        if (response.ok) {
+          const data = await response.json()
           items = data.items || []
+        } else {
+          console.error('[fetch-products] NetSuite list fetch failed', response.status, await response.text())
         }
+      }
+      
+      // items array is already populated for single item fetch
+      if (items.length > 0) {
         
         let products = items.map((item: any) => {
           console.log('[fetch-products] Processing item:', item.id, 'Full item:', JSON.stringify(item, null, 2))
@@ -340,8 +436,6 @@ serve(async (req) => {
           products = applyFilters(products, filters)
         }
         results.netsuite = products
-      } else {
-        console.error('[fetch-products] NetSuite fetch failed', response.status, await response.text())
       }
     } catch (error) {
       console.error('[fetch-products] NetSuite error', error)
