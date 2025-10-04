@@ -1,7 +1,10 @@
-﻿import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { Spin } from 'antd'
 import ProtectedRoute from './components/ProtectedRoute'
+
+// Public pages
+import Landing from './pages/Landing'
 
 // Auth pages
 import Login from './pages/Login'
@@ -55,11 +58,8 @@ function App() {
         }
       />
 
-      {/* Default route - redirect based on auth state */}
-      <Route
-        path="/"
-        element={<Navigate to={user ? '/dashboard' : '/auth/login'} replace />}
-      />
+      {/* Landing page for non-authenticated users */}
+      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
       
       {/* Catch all - redirect to home */}
       <Route path="*" element={<Navigate to="/" replace />} />
