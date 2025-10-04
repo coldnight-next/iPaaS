@@ -597,8 +597,8 @@ export default function SyncManagement() {
               message="Pattern Types"
               description={
                 <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                  <li><strong>Filter-based:</strong> Uses the current filter criteria from Product Sync Preview</li>
-                  <li><strong>NetSuite Saved Search:</strong> References an existing NetSuite saved search by ID</li>
+                  <li><strong>Filter-based (Recommended):</strong> Uses filter criteria from Product Sync Preview - fully supported</li>
+                  <li><strong>NetSuite Saved Search:</strong> Coming soon - currently not supported by NetSuite REST API</li>
                 </ul>
               }
               type="info"
@@ -616,11 +616,11 @@ export default function SyncManagement() {
               <TextArea rows={3} placeholder="Optional description of this pattern" />
             </Form.Item>
             <Form.Item
-              label="NetSuite Saved Search ID (Optional)"
+              label="NetSuite Saved Search ID (Coming Soon)"
               name="netsuite_saved_search_id"
-              tooltip="Enter a NetSuite saved search ID to fetch items from that search instead of using filters"
+              tooltip="NetSuite saved search support is coming soon. For now, use filter-based patterns from Product Sync Preview."
             >
-              <Input placeholder="e.g., customsearch_my_items or 1234" />
+              <Input placeholder="Not yet supported - use filters instead" disabled />
             </Form.Item>
             <Form.Item
               label="Sync Direction"

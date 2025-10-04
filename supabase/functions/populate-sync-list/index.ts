@@ -86,44 +86,14 @@ serve(async (req) => {
 
     // Check if this is a NetSuite saved search or a filter-based pattern
     if (pattern.netsuite_saved_search_id) {
-      console.log(`Fetching items from NetSuite saved search: ${pattern.netsuite_saved_search_id}`)
-      
-      // NetSuite saved search ID format can be:
-      // - customsearch123 (custom search)
-      // - customsearch_my_search (custom search with name)
-      // - 123 (numeric ID)
-      
-      const searchId = pattern.netsuite_saved_search_id
-      
-      // Use NetSuite's search API endpoint
-      // Format: /services/rest/record/v1/item?savedSearchId=customsearch123
-      const searchUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/item`
-      const params = new URLSearchParams()
-      params.append('limit', '1000')
-      params.append('savedSearchId', searchId)
-      
-      const fullUrl = `${searchUrl}?${params.toString()}`
-      console.log('Fetching from URL:', fullUrl)
-      
-      const searchResponse = await fetch(fullUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'prefer': 'transient',
-        },
-      })
-
-      if (!searchResponse.ok) {
-        const errorText = await searchResponse.text()
-        console.error('NetSuite saved search error:', errorText)
-        throw new Error(`Failed to fetch saved search results: ${searchResponse.status} ${errorText}`)
-      }
-
-      const searchData = await searchResponse.json()
-      items = searchData.items || []
-      
-      console.log(`Fetched ${items.length} items from saved search`)
+      // Note: NetSuite REST API doesn't directly support saved search execution
+      // For now, redirect to use filters instead
+      throw new Error(
+        'NetSuite saved search execution via REST API is not yet supported. ' +
+        'Please use filter-based patterns instead. ' +
+        'You can create filters in Product Sync Preview and save them as a pattern. ' +
+        'Saved search support will be added in a future update using NetSuite\'s SuiteQL or Search API.'
+      )
     } else if (pattern.filters && Object.keys(pattern.filters).length > 0) {
       console.log('Fetching items using filter criteria:', pattern.filters)
       
