@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Card, Table, Button, Space, Tag, Spin, Alert, Typography, Row, Col, Select, Input, Checkbox, Statistic, Tabs, Modal, message, Radio } from 'antd'
-import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined, SwapOutlined, DatabaseOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Space, Tag, Spin, Alert, Typography, Row, Col, Select, Input, Checkbox, Statistic, Tabs, Modal, message, Radio, DatePicker, InputNumber, Collapse, Drawer, Form } from 'antd'
+import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined, SwapOutlined, DatabaseOutlined, EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
 const { Title, Text, Paragraph } = Typography
 const { TabPane } = Tabs
 const { Search } = Input
+const { RangePicker } = DatePicker
+const { Panel } = Collapse
 
 interface Product {
   id: string
@@ -21,6 +23,19 @@ interface Product {
   variants?: number
   lastModified?: string
   rawData?: any
+  staged?: boolean
+  stagedChanges?: Partial<Product>
+}
+
+interface FetchFilters {
+  status?: string[]
+  dateRange?: [string, string]
+  priceMin?: number
+  priceMax?: number
+  inventoryMin?: number
+  inventoryMax?: number
+  category?: string
+  searchTerm?: string
 }
 
 interface SyncMapping {
@@ -50,6 +65,13 @@ export default function ProductSyncPreview() {
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
   const [syncDirection, setSyncDirection] = useState<'netsuite-to-shopify' | 'shopify-to-netsuite' | 'bidirectional'>('netsuite-to-shopify')
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  const [fetchFilters, setFetchFilters] = useState<FetchFilters>({})
+  const [showFilters, setShowFilters] = useState(false)
+  const [stagedProducts, setStagedProducts] = useState<Map<string, Product>>(new Map())
+  const [editDrawerVisible, setEditDrawerVisible] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [syncingProductId, setSyncingProductId] = useState<string | null>(null)
+  const [form] = Form.useForm()
 
   const loadProducts = async () => {
     if (!session) {
@@ -69,7 +91,8 @@ export default function ProductSyncPreview() {
           Authorization: `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
-          platforms: ['netsuite', 'shopify']
+          platforms: ['netsuite', 'shopify'],
+          filters: fetchFilters
         })
       })
 
@@ -90,6 +113,96 @@ export default function ProductSyncPreview() {
       message.error('Failed to load products. Please check your connections.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const stageProduct = (product: Product) => {
+    const newStaged = new Map(stagedProducts)
+    newStaged.set(product.id, { ...product, staged: true })
+    setStagedProducts(newStaged)
+    message.success(`${product.name} added to staging area`)
+  }
+
+  const unstageProduct = (productId: string) => {
+    const newStaged = new Map(stagedProducts)
+    newStaged.delete(productId)
+    setStagedProducts(newStaged)
+    message.info('Product removed from staging area')
+  }
+
+  const editProduct = (product: Product) => {
+    const stagedProduct = stagedProducts.get(product.id) || product
+    setEditingProduct(stagedProduct)
+    form.setFieldsValue({
+      name: stagedProduct.name,
+      sku: stagedProduct.sku,
+      price: stagedProduct.price,
+      inventory: stagedProduct.inventory,
+      description: stagedProduct.description,
+      status: stagedProduct.status
+    })
+    setEditDrawerVisible(true)
+  }
+
+  const saveProductEdit = () => {
+    const values = form.getFieldsValue()
+    if (editingProduct) {
+      const updatedProduct = {
+        ...editingProduct,
+        ...values,
+        stagedChanges: values,
+        staged: true
+      }
+      const newStaged = new Map(stagedProducts)
+      newStaged.set(editingProduct.id, updatedProduct)
+      setStagedProducts(newStaged)
+      message.success('Changes saved to staging area')
+      setEditDrawerVisible(false)
+    }
+  }
+
+  const syncSingleProduct = async (product: Product) => {
+    if (!session) return
+    
+    setSyncingProductId(product.id)
+    try {
+      const productToSync = stagedProducts.get(product.id) || product
+      const mapping = mappings.find(m => 
+        syncDirection === 'netsuite-to-shopify' 
+          ? m.netsuiteId === product.id 
+          : m.shopifyId === product.id
+      )
+
+      const response = await fetch(`${FUNCTIONS_BASE}/sync-products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          mappings: [mapping],
+          direction: syncDirection,
+          product: productToSync.stagedChanges || productToSync
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Sync failed')
+      }
+
+      const result = await response.json()
+      message.success(`${product.name} synced successfully!`)
+      
+      // Remove from staging after successful sync
+      unstageProduct(product.id)
+      
+      // Refresh products to see updated state
+      await loadProducts()
+    } catch (error) {
+      console.error('Sync error:', error)
+      message.error(`Failed to sync ${product.name}`)
+    } finally {
+      setSyncingProductId(null)
     }
   }
 
@@ -189,7 +302,8 @@ export default function ProductSyncPreview() {
     toUpdate: syncDirection === 'netsuite-to-shopify'
       ? mappings.filter(m => m.action === 'update' && selectedProducts.includes(m.netsuiteId)).length
       : mappings.filter(m => m.action === 'update' && m.shopifyId && selectedProducts.includes(m.shopifyId)).length,
-    total: selectedProducts.length
+    total: selectedProducts.length,
+    staged: stagedProducts.size
   }
 
   const columns = [
@@ -287,6 +401,49 @@ export default function ProductSyncPreview() {
         }
         return <Text type="secondary">No match</Text>
       }
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 200,
+      fixed: 'right' as const,
+      render: (_: any, record: Product) => {
+        const isStaged = stagedProducts.has(record.id)
+        const isSyncing = syncingProductId === record.id
+        
+        return (
+          <Space size="small">
+            {!isStaged ? (
+              <Button
+                size="small"
+                icon={<SaveOutlined />}
+                onClick={() => stageProduct(record)}
+              >
+                Stage
+              </Button>
+            ) : (
+              <Tag color="blue">Staged</Tag>
+            )}
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => editProduct(record)}
+            >
+              Edit
+            </Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<ArrowRightOutlined />}
+              onClick={() => syncSingleProduct(record)}
+              loading={isSyncing}
+              disabled={!isStaged}
+            >
+              Sync
+            </Button>
+          </Space>
+        )
+      }
     }
   ]
 
@@ -368,9 +525,103 @@ export default function ProductSyncPreview() {
               />
             </div>
 
+            {/* Filters */}
+            <div>
+              <Space style={{ marginBottom: 12 }}>
+                <Text strong style={{ fontSize: '16px' }}>2. Configure Filters (Optional):</Text>
+                <Button
+                  size="small"
+                  icon={<FilterOutlined />}
+                  onClick={() => setShowFilters(!showFilters)}
+                >
+                  {showFilters ? 'Hide Filters' : 'Show Filters'}
+                </Button>
+              </Space>
+              {showFilters && (
+                <Card size="small" style={{ backgroundColor: '#fff' }}>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Text strong>Product Status:</Text>
+                        <Select
+                          mode="multiple"
+                          placeholder="Select status"
+                          style={{ width: '100%' }}
+                          value={fetchFilters.status}
+                          onChange={(value) => setFetchFilters({ ...fetchFilters, status: value })}
+                        >
+                          <Select.Option value="active">Active</Select.Option>
+                          <Select.Option value="draft">Draft</Select.Option>
+                          <Select.Option value="archived">Archived</Select.Option>
+                        </Select>
+                      </Space>
+                    </Col>
+                    <Col span={12}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Text strong>Price Range:</Text>
+                        <Space>
+                          <InputNumber
+                            placeholder="Min"
+                            prefix="$"
+                            value={fetchFilters.priceMin}
+                            onChange={(value) => setFetchFilters({ ...fetchFilters, priceMin: value || undefined })}
+                          />
+                          <Text>to</Text>
+                          <InputNumber
+                            placeholder="Max"
+                            prefix="$"
+                            value={fetchFilters.priceMax}
+                            onChange={(value) => setFetchFilters({ ...fetchFilters, priceMax: value || undefined })}
+                          />
+                        </Space>
+                      </Space>
+                    </Col>
+                  </Row>
+                  <Row gutter={16} style={{ marginTop: 16 }}>
+                    <Col span={12}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Text strong>Inventory Range:</Text>
+                        <Space>
+                          <InputNumber
+                            placeholder="Min"
+                            value={fetchFilters.inventoryMin}
+                            onChange={(value) => setFetchFilters({ ...fetchFilters, inventoryMin: value || undefined })}
+                          />
+                          <Text>to</Text>
+                          <InputNumber
+                            placeholder="Max"
+                            value={fetchFilters.inventoryMax}
+                            onChange={(value) => setFetchFilters({ ...fetchFilters, inventoryMax: value || undefined })}
+                          />
+                        </Space>
+                      </Space>
+                    </Col>
+                    <Col span={12}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Text strong>Search Term:</Text>
+                        <Input
+                          placeholder="Search in product name or SKU"
+                          value={fetchFilters.searchTerm}
+                          onChange={(e) => setFetchFilters({ ...fetchFilters, searchTerm: e.target.value })}
+                        />
+                      </Space>
+                    </Col>
+                  </Row>
+                  <Row style={{ marginTop: 16 }}>
+                    <Button
+                      size="small"
+                      onClick={() => setFetchFilters({})}
+                    >
+                      Clear Filters
+                    </Button>
+                  </Row>
+                </Card>
+              )}
+            </div>
+
             {/* Fetch Products Button */}
             <div>
-              <Text strong style={{ fontSize: '16px', display: 'block', marginBottom: 12 }}>2. Fetch Products:</Text>
+              <Text strong style={{ fontSize: '16px', display: 'block', marginBottom: 12 }}>3. Fetch Products:</Text>
               <Button
                 type="primary"
                 size="large"
@@ -396,39 +647,49 @@ export default function ProductSyncPreview() {
         {/* Statistics - Only show after products are loaded */}
         {hasLoadedOnce && (
           <Row gutter={16} style={{ marginBottom: 24 }}>
-            <Col span={6}>
+            <Col span={4}>
               <Card>
                 <Statistic
-                  title="Total Selected"
+                  title="Total Products"
+                  value={sourceProducts.length}
+                  prefix={<DatabaseOutlined />}
+                />
+              </Card>
+            </Col>
+            <Col span={5}>
+              <Card>
+                <Statistic
+                  title="Staged for Sync"
+                  value={stats.staged}
+                  valueStyle={{ color: '#1890ff' }}
+                  prefix={<SaveOutlined />}
+                />
+              </Card>
+            </Col>
+            <Col span={5}>
+              <Card>
+                <Statistic
+                  title="Selected"
                   value={stats.total}
                   prefix={<CheckCircleOutlined />}
                 />
               </Card>
             </Col>
-            <Col span={6}>
+            <Col span={5}>
               <Card>
                 <Statistic
                   title="New Products"
                   value={stats.toCreate}
-                  valueStyle={{ color: '#1890ff' }}
+                  valueStyle={{ color: '#52c41a' }}
                 />
               </Card>
             </Col>
-            <Col span={6}>
+            <Col span={5}>
               <Card>
                 <Statistic
                   title="Updates"
                   value={stats.toUpdate}
                   valueStyle={{ color: '#faad14' }}
-                />
-              </Card>
-            </Col>
-            <Col span={6}>
-              <Card>
-                <Statistic
-                  title={syncDirection === 'netsuite-to-shopify' ? 'NetSuite Products' : 'Shopify Products'}
-                  value={sourceProducts.length}
-                  prefix={<DatabaseOutlined />}
                 />
               </Card>
             </Col>
@@ -546,6 +807,78 @@ export default function ProductSyncPreview() {
             </div>
           )}
         </Modal>
+
+        {/* Edit Product Drawer */}
+        <Drawer
+          title="Edit Product"
+          width={600}
+          open={editDrawerVisible}
+          onClose={() => setEditDrawerVisible(false)}
+          extra={
+            <Space>
+              <Button onClick={() => setEditDrawerVisible(false)} icon={<CloseOutlined />}>
+                Cancel
+              </Button>
+              <Button type="primary" onClick={saveProductEdit} icon={<SaveOutlined />}>
+                Save to Staging
+              </Button>
+            </Space>
+          }
+        >
+          {editingProduct && (
+            <Form form={form} layout="vertical">
+              <Alert
+                message="Editing in Staging Area"
+                description="Changes will be saved to the staging area. Click 'Sync' to push changes to Shopify."
+                type="info"
+                showIcon
+                style={{ marginBottom: 24 }}
+              />
+              
+              <Form.Item label="Product Name" name="name" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              
+              <Form.Item label="SKU" name="sku" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="Price" name="price" rules={[{ required: true }]}>
+                    <InputNumber
+                      prefix="$"
+                      style={{ width: '100%' }}
+                      min={0}
+                      step={0.01}
+                      precision={2}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="Inventory" name="inventory" rules={[{ required: true }]}>
+                    <InputNumber
+                      style={{ width: '100%' }}
+                      min={0}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              
+              <Form.Item label="Status" name="status" rules={[{ required: true }]}>
+                <Select>
+                  <Select.Option value="active">Active</Select.Option>
+                  <Select.Option value="draft">Draft</Select.Option>
+                  <Select.Option value="archived">Archived</Select.Option>
+                </Select>
+              </Form.Item>
+              
+              <Form.Item label="Description" name="description">
+                <Input.TextArea rows={4} />
+              </Form.Item>
+            </Form>
+          )}
+        </Drawer>
       </Card>
     </div>
   )

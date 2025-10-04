@@ -3,6 +3,43 @@ import { withCors } from '../_shared/cors.ts'
 import { createSupabaseClient, getUserFromRequest } from '../_shared/supabaseClient.ts'
 import { decryptJson } from '../_shared/encryption.ts'
 
+function applyFilters(products: any[], filters: any): any[] {
+  let filtered = products
+
+  // Status filter
+  if (filters.status && filters.status.length > 0) {
+    filtered = filtered.filter(p => filters.status.includes(p.status))
+  }
+
+  // Price range filter
+  if (filters.priceMin !== undefined && filters.priceMin !== null) {
+    filtered = filtered.filter(p => p.price >= filters.priceMin)
+  }
+  if (filters.priceMax !== undefined && filters.priceMax !== null) {
+    filtered = filtered.filter(p => p.price <= filters.priceMax)
+  }
+
+  // Inventory range filter
+  if (filters.inventoryMin !== undefined && filters.inventoryMin !== null) {
+    filtered = filtered.filter(p => p.inventory >= filters.inventoryMin)
+  }
+  if (filters.inventoryMax !== undefined && filters.inventoryMax !== null) {
+    filtered = filtered.filter(p => p.inventory <= filters.inventoryMax)
+  }
+
+  // Search term filter
+  if (filters.searchTerm) {
+    const term = filters.searchTerm.toLowerCase()
+    filtered = filtered.filter(p => 
+      p.name?.toLowerCase().includes(term) ||
+      p.sku?.toLowerCase().includes(term) ||
+      p.description?.toLowerCase().includes(term)
+    )
+  }
+
+  return filtered
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin')
 
@@ -20,6 +57,15 @@ serve(async (req) => {
   if (req.method !== 'POST') {
     return corsJsonHeaders(405, { error: 'method_not_allowed', message: 'Use POST' })
   }
+
+  let body: any = {}
+  try {
+    body = await req.json()
+  } catch (error) {
+    // Body is optional, continue without it
+  }
+
+  const filters = body.filters || {}
 
   let auth
   try {
@@ -80,7 +126,7 @@ serve(async (req) => {
 
       if (response.ok) {
         const data = await response.json()
-        results.netsuite = (data.items || []).map((item: any) => ({
+        let products = (data.items || []).map((item: any) => ({
           id: item.id,
           name: item.displayName || item.itemId,
           sku: item.itemId,
@@ -91,6 +137,10 @@ serve(async (req) => {
           description: item.description,
           rawData: item
         }))
+        
+        // Apply filters
+        products = applyFilters(products, filters)
+        results.netsuite = products
       } else {
         console.error('[fetch-products] NetSuite fetch failed', response.status, await response.text())
       }
@@ -117,7 +167,7 @@ serve(async (req) => {
 
       if (response.ok) {
         const data = await response.json()
-        results.shopify = (data.products || []).map((product: any) => {
+        let products = (data.products || []).map((product: any) => {
           const variant = product.variants?.[0]
           return {
             id: product.id.toString(),
@@ -133,6 +183,10 @@ serve(async (req) => {
             rawData: product
           }
         })
+        
+        // Apply filters
+        products = applyFilters(products, filters)
+        results.shopify = products
       } else {
         console.error('[fetch-products] Shopify fetch failed', response.status, await response.text())
       }
