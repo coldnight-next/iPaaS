@@ -15,6 +15,7 @@ import ProductSyncPreview from '../components/ProductSyncPreview'
 import SyncManagement from '../components/SyncManagement'
 import UserManagement from '../components/UserManagement'
 import OrderSyncManagement from '../components/OrderSyncManagement'
+import InventorySyncManagement from '../components/InventorySyncManagement'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -1540,7 +1541,12 @@ export default function Dashboard() {
         )}
 
         {/* Inventory Management Page */}
-        {activeTab === 'inventory' && (
+        {activeTab === 'inventory' && session && (
+          <InventorySyncManagement session={session} />
+        )}
+
+        {/* Inventory Management Page OLD - Remove after testing */}
+        {activeTab === 'inventory_old' && (
           <div>
             <Typography.Title level={2} style={{ marginBottom: '24px' }}>
               Inventory Management
