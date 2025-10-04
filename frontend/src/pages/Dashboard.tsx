@@ -13,6 +13,7 @@ import MonitoringDashboard from '../components/MonitoringDashboard'
 import ManualConnectionSetup from '../components/ManualConnectionSetup'
 import ProductSyncPreview from '../components/ProductSyncPreview'
 import SyncManagement from '../components/SyncManagement'
+import UserManagement from '../components/UserManagement'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -1420,43 +1421,8 @@ export default function Dashboard() {
           <SyncManagement />
         )}
 
-        {activeTab === 'user-management' && isAdmin && (
-          <div>
-            <Typography.Title level={2} style={{ marginBottom: '24px' }}>
-              User Management
-            </Typography.Title>
-            <Card
-              title="Users"
-              extra={
-                <Button type="primary" icon={<UsergroupAddOutlined />}>
-                  Add User
-                </Button>
-              }
-            >
-              <Table
-                columns={[
-                  { title: 'Name', dataIndex: 'name', key: 'name' },
-                  { title: 'Email', dataIndex: 'email', key: 'email' },
-                  { title: 'Role', dataIndex: 'role', key: 'role', render: (role: string) => <Tag color={role === 'admin' ? 'red' : 'blue'}>{role}</Tag> },
-                  { title: 'Status', dataIndex: 'status', key: 'status', render: (status: string) => <Tag color={status === 'active' ? 'green' : 'orange'}>{status}</Tag> },
-                  { title: 'Last Login', dataIndex: 'lastLogin', key: 'lastLogin' },
-                  {
-                    title: 'Actions',
-                    key: 'actions',
-                    render: () => (
-                      <Space>
-                        <Button size="small">Edit</Button>
-                        <Button size="small" danger>Delete</Button>
-                      </Space>
-                    ),
-                  },
-                ]}
-                dataSource={[]}
-                locale={{ emptyText: 'No users found.' }}
-                pagination={{ pageSize: 10 }}
-              />
-            </Card>
-          </div>
+        {activeTab === 'user-management' && isAdmin && session && (
+          <UserManagement session={session} />
         )}
 
         {activeTab === 'system-settings' && isAdmin && (
