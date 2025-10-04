@@ -366,4 +366,4 @@ async function handleNetSuiteTokenExchange(
   }
 
   return redirectWithStatus('success', 'NetSuite connection established')
-})
+}
