@@ -73,9 +73,9 @@ export default function Signup() {
       >
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <Title level={2} style={{ marginBottom: '8px' }}>
-            Create Account
+            Create Your SyncFlow Account
           </Title>
-          <Text type="secondary">Sign up for your iPaaS account</Text>
+          <Text type="secondary">Start syncing in minutes</Text>
         </div>
 
         {error && (

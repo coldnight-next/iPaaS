@@ -69,9 +69,9 @@ export default function Login() {
       >
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <Title level={2} style={{ marginBottom: '8px' }}>
-            Welcome Back
+            Welcome Back to SyncFlow
           </Title>
-          <Text type="secondary">Sign in to your iPaaS account</Text>
+          <Text type="secondary">Sign in to your account</Text>
         </div>
 
         {error && (

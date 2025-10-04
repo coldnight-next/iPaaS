@@ -1,6 +1,7 @@
-# 🚀 Enterprise iPaaS Platform
+# ⚡ SyncFlow - Enterprise iPaaS Platform
 
 > **A complete, self-hosted Integration Platform as a Service (iPaaS) that EXCEEDS Celigo's capabilities while saving $10,000+ annually**
+> **Professional NetSuite ↔ Shopify integration at quantum speed**
 
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen)]()
 [![Features](https://img.shields.io/badge/features-7%2F7%20complete-blue)]()

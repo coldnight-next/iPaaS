@@ -450,12 +450,13 @@ export default function Dashboard() {
       }}>
         <div style={{
           marginBottom: '24px',
-          fontSize: sidebarCollapsed ? '14px' : '18px',
+          fontSize: sidebarCollapsed ? '14px' : '20px',
           fontWeight: 'bold',
           textAlign: sidebarCollapsed ? 'center' : 'left',
-          transition: 'font-size 0.3s ease'
+          transition: 'font-size 0.3s ease',
+          color: '#1890ff'
         }}>
-          {sidebarCollapsed ? 'iPaaS' : 'NetSuite ↔ Shopify iPaaS'}
+          {sidebarCollapsed ? '⚡' : '⚡ SyncFlow'}
         </div>
         <div style={{
           position: 'absolute',
@@ -789,7 +790,7 @@ export default function Dashboard() {
                 {wizardCurrentStep === 0 && (
                   <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                     <Typography.Title level={3} style={{ marginBottom: '16px' }}>
-                      Welcome to NetSuite ↔ Shopify iPaaS Setup
+                      Welcome to SyncFlow Setup
                     </Typography.Title>
                     <Typography.Paragraph style={{ fontSize: '16px', marginBottom: '24px' }}>
                       This wizard will guide you through setting up your integration between NetSuite and Shopify.
