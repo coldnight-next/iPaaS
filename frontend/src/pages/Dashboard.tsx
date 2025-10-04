@@ -1540,57 +1540,6 @@ export default function Dashboard() {
         {/* Products Management Page */}
         {activeTab === 'products' && (
           <ProductSyncPreview />
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Card
-                  title="Products Overview"
-                  extra={
-                    <Space>
-                      <Button type="primary" icon={<CloudSyncOutlined />}>
-                        Sync from Platforms
-                      </Button>
-                      <Button icon={<DatabaseOutlined />}>
-                        Refresh
-                      </Button>
-                    </Space>
-                  }
-                >
-                  <Row gutter={16} style={{ marginBottom: '16px' }}>
-                    <Col span={6}>
-                      <Statistic title="NetSuite Products" value={0} prefix={<DatabaseOutlined />} />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic title="Shopify Products" value={0} prefix={<LinkOutlined />} />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic title="Mapped Products" value={0} prefix={<LinkOutlined />} />
-                    </Col>
-                    <Col span={6}>
-                      <Statistic title="Sync Pending" value={0} prefix={<SyncOutlined />} />
-                    </Col>
-                  </Row>
-                  <Table
-                    columns={[
-                      { title: 'Platform', dataIndex: 'platform', key: 'platform', render: (platform: string) => <Tag color={platform === 'netsuite' ? 'blue' : 'green'}>{platform}</Tag> },
-                      { title: 'SKU', dataIndex: 'sku', key: 'sku' },
-                      { title: 'Name', dataIndex: 'name', key: 'name' },
-                      { title: 'Price', dataIndex: 'price', key: 'price', render: (price: number) => `$${price?.toFixed(2) || '0.00'}` },
-                      { title: 'Inventory', dataIndex: 'inventory_quantity', key: 'inventory_quantity' },
-                      { title: 'Status', dataIndex: 'is_active', key: 'is_active', render: (active: boolean) => <Tag color={active ? 'green' : 'red'}>{active ? 'Active' : 'Inactive'}</Tag> },
-                      { title: 'Last Sync', dataIndex: 'last_platform_sync', key: 'last_platform_sync', render: (date: string) => date ? new Date(date).toLocaleString() : 'Never' },
-                      {
-                        title: 'Actions',
-                        key: 'actions',
-                        render: () => (
-                          <Space>
-                            <Button size="small">View</Button>
-                            <Button size="small">Edit</Button>
-                            <Button size="small" type="primary">Sync</Button>
-                          </Space>
-                        ),
-                      },
-                    ]}
-                    dataSource={[]}
         )}
 
         {/* Inventory Management Page */}
