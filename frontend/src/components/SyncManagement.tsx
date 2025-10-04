@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Card, Table, Button, Space, Tag, Modal, Form, Input, Select, message, Drawer, Tabs, Statistic, Row, Col, Switch, Popconfirm, Badge, Typography } from 'antd'
-import { SaveOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, FilterOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Space, Tag, Modal, Form, Input, Select, message, Drawer, Tabs, Statistic, Row, Col, Switch, Popconfirm, Badge, Typography, Tooltip, Alert } from 'antd'
+import { SaveOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, FilterOutlined, ClockCircleOutlined, ThunderboltOutlined, ReloadOutlined } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -45,6 +45,12 @@ interface SyncHistory {
   duration_seconds?: number
 }
 
+const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
+const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
+  ? `${(import.meta.env.VITE_SUPABASE_URL as string).replace(/\/$/, '')}/functions/v1`
+  : undefined
+const FUNCTIONS_BASE = configuredFunctionsBase || inferredFunctionsBase || 'http://localhost:54321/functions/v1'
+
 export default function SyncManagement() {
   const { session } = useAuth()
   const [savedPatterns, setSavedPatterns] = useState<SavedPattern[]>([])
@@ -53,6 +59,7 @@ export default function SyncManagement() {
   const [loading, setLoading] = useState(false)
   const [savePatternModalVisible, setSavePatternModalVisible] = useState(false)
   const [currentFilters, setCurrentFilters] = useState<any>({})
+  const [populatingPattern, setPopulatingPattern] = useState<string | null>(null)
   const [form] = Form.useForm()
 
   useEffect(() => {
@@ -124,6 +131,49 @@ export default function SyncManagement() {
       loadSavedPatterns()
     } catch (error: any) {
       message.error('Failed to save pattern: ' + error.message)
+    }
+  }
+
+  const populateSyncListFromPattern = async (patternId: string, clearExisting: boolean = false) => {
+    if (!session) {
+      message.error('Please log in to populate sync list')
+      return
+    }
+
+    setPopulatingPattern(patternId)
+    try {
+      const response = await fetch(`${FUNCTIONS_BASE}/populate-sync-list`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          patternId,
+          clearExisting
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to populate sync list')
+      }
+
+      const result = await response.json()
+      message.success(
+        `Sync list populated! ${result.stats.inserted} new, ${result.stats.updated} updated, ${result.stats.failed} failed`
+      )
+      
+      // Refresh the sync list and patterns
+      await Promise.all([
+        loadSyncList(),
+        loadSavedPatterns()
+      ])
+    } catch (error: any) {
+      console.error('Error populating sync list:', error)
+      message.error(error.message || 'Failed to populate sync list')
+    } finally {
+      setPopulatingPattern(null)
     }
   }
 
@@ -201,6 +251,16 @@ export default function SyncManagement() {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
+      render: (name: string, record: any) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{name}</Text>
+          {record.netsuite_saved_search_id && (
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              NetSuite Search: {record.netsuite_saved_search_id}
+            </Text>
+          )}
+        </Space>
+      )
     },
     {
       title: 'Description',
@@ -221,6 +281,12 @@ export default function SyncManagement() {
       }
     },
     {
+      title: 'Last Populated',
+      dataIndex: 'last_populated_at',
+      key: 'last_populated_at',
+      render: (date: string) => date ? new Date(date).toLocaleString() : 'Never'
+    },
+    {
       title: 'Status',
       dataIndex: 'is_active',
       key: 'is_active',
@@ -232,8 +298,35 @@ export default function SyncManagement() {
       title: 'Actions',
       key: 'actions',
       render: (_: any, record: SavedPattern) => (
-        <Space>
-          <Button size="small" icon={<FilterOutlined />}>Apply</Button>
+        <Space wrap>
+          <Tooltip title="Populate sync list from this pattern">
+            <Button 
+              size="small" 
+              type="primary"
+              icon={<ThunderboltOutlined />}
+              onClick={() => populateSyncListFromPattern(record.id, false)}
+              loading={populatingPattern === record.id}
+            >
+              Populate
+            </Button>
+          </Tooltip>
+          <Tooltip title="Clear existing and populate fresh">
+            <Button 
+              size="small" 
+              icon={<ReloadOutlined />}
+              onClick={() => {
+                Modal.confirm({
+                  title: 'Replace sync list?',
+                  content: 'This will clear all existing items and populate fresh from this pattern.',
+                  onOk: () => populateSyncListFromPattern(record.id, true)
+                })
+              }}
+              loading={populatingPattern === record.id}
+            >
+              Replace All
+            </Button>
+          </Tooltip>
+          <Button size="small" icon={<FilterOutlined />}>View Filters</Button>
           <Popconfirm title="Delete this pattern?" onConfirm={() => deletePattern(record.id)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -368,13 +461,26 @@ export default function SyncManagement() {
         
         <Tabs defaultActiveKey="patterns">
           <TabPane tab={<span><FilterOutlined /> Saved Patterns</span>} key="patterns">
+            <Alert
+              message="Saved Search Patterns"
+              description={
+                <span>
+                  Saved patterns can store filter criteria or NetSuite saved search IDs. 
+                  Click <strong>Populate</strong> to add matching items to your sync list, or <strong>Replace All</strong> to clear and refresh your entire sync list.
+                </span>
+              }
+              type="info"
+              showIcon
+              closable
+              style={{ marginBottom: 16 }}
+            />
             <Space style={{ marginBottom: 16 }}>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={() => setSavePatternModalVisible(true)}
               >
-                Save Current Filters
+                Create New Pattern
               </Button>
             </Space>
             <Table
@@ -437,12 +543,25 @@ export default function SyncManagement() {
         </Tabs>
 
         <Modal
-          title="Save Search Pattern"
+          title="Create Search Pattern"
           open={savePatternModalVisible}
           onOk={savePattern}
           onCancel={() => setSavePatternModalVisible(false)}
+          width={600}
         >
           <Form form={form} layout="vertical">
+            <Alert
+              message="Pattern Types"
+              description={
+                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                  <li><strong>Filter-based:</strong> Uses the current filter criteria from Product Sync Preview</li>
+                  <li><strong>NetSuite Saved Search:</strong> References an existing NetSuite saved search by ID</li>
+                </ul>
+              }
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
             <Form.Item
               label="Pattern Name"
               name="name"
@@ -454,6 +573,13 @@ export default function SyncManagement() {
               <TextArea rows={3} placeholder="Optional description of this pattern" />
             </Form.Item>
             <Form.Item
+              label="NetSuite Saved Search ID (Optional)"
+              name="netsuite_saved_search_id"
+              tooltip="Enter a NetSuite saved search ID to fetch items from that search instead of using filters"
+            >
+              <Input placeholder="e.g., customsearch_my_items or 1234" />
+            </Form.Item>
+            <Form.Item
               label="Sync Direction"
               name="sync_direction"
               rules={[{ required: true }]}
@@ -462,6 +588,26 @@ export default function SyncManagement() {
                 <Select.Option value="netsuite-to-shopify">NetSuite → Shopify</Select.Option>
                 <Select.Option value="shopify-to-netsuite">Shopify → NetSuite</Select.Option>
                 <Select.Option value="bidirectional">Bidirectional</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item
+              label="Auto-populate"
+              name="auto_populate"
+              valuePropName="checked"
+              tooltip="Automatically refresh sync list from this pattern on a schedule"
+            >
+              <Switch />
+            </Form.Item>
+            <Form.Item
+              label="Population Frequency"
+              name="population_frequency"
+              tooltip="How often to automatically refresh the sync list (requires auto-populate enabled)"
+            >
+              <Select placeholder="Select frequency">
+                <Select.Option value="manual">Manual Only</Select.Option>
+                <Select.Option value="hourly">Hourly</Select.Option>
+                <Select.Option value="daily">Daily</Select.Option>
+                <Select.Option value="weekly">Weekly</Select.Option>
               </Select>
             </Form.Item>
           </Form>

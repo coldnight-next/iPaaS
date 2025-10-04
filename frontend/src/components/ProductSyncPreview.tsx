@@ -357,9 +357,7 @@ export default function ProductSyncPreview() {
         .from('sync_list')
         .select('id')
         .eq('user_id', userData.user.id)
-        .eq('item_type', 'product')
-        .eq('source_platform', product.platform)
-        .eq('source_id', product.id)
+        .eq('sku', product.sku)
         .single()
 
       if (existing) {
@@ -367,22 +365,31 @@ export default function ProductSyncPreview() {
         return
       }
 
-      // Add to sync list
+      // Determine the sync direction from the current setting
+      const direction = syncDirection === 'netsuite-to-shopify' 
+        ? 'netsuite-to-shopify' 
+        : syncDirection === 'shopify-to-netsuite'
+        ? 'shopify-to-netsuite'
+        : 'bidirectional'
+
+      // Add to sync list with proper schema fields
       const { error } = await supabase
         .from('sync_list')
         .insert({
           user_id: userData.user.id,
-          item_type: 'product',
-          source_platform: product.platform,
-          target_platform: syncDirection === 'netsuite-to-shopify' ? 'shopify' : 'netsuite',
-          source_id: product.id,
+          netsuite_item_id: product.platform === 'netsuite' ? product.id : null,
+          shopify_product_id: product.platform === 'shopify' ? product.id : null,
+          sku: product.sku,
+          product_name: product.name,
+          sync_direction: direction,
           sync_mode: 'delta',
           is_active: true,
-          filter_config: fetchFilters,
           metadata: {
-            name: product.name,
-            sku: product.sku,
-            price: product.price
+            price: product.price,
+            inventory: product.inventory,
+            status: product.status,
+            lastModified: product.lastModified,
+            addedFrom: 'product_sync_preview'
           }
         })
 

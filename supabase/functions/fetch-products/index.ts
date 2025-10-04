@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { withCors } from '../_shared/cors.ts'
 import { createSupabaseClient, getUserFromRequest } from '../_shared/supabaseClient.ts'
 import { decryptJson } from '../_shared/encryption.ts'
+import { refreshNetSuiteToken, proactiveTokenRefresh } from '../_shared/tokenRefresh.ts'
 
 function applyFilters(products: any[], filters: any): any[] {
   let filtered = products
@@ -180,8 +181,11 @@ serve(async (req) => {
   // Fetch NetSuite products
   if (netsuiteConnection) {
     try {
-      const credentials = await decryptJson(netsuiteConnection.credentials.encrypted)
+      let credentials = await decryptJson(netsuiteConnection.credentials.encrypted)
       const accountId = netsuiteConnection.metadata.account_id
+      
+      // Proactively refresh token if it's about to expire
+      credentials.access_token = await proactiveTokenRefresh(netsuiteConnection.id, credentials)
 
       // NetSuite REST API endpoint for items
       const baseUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1`
@@ -231,6 +235,42 @@ serve(async (req) => {
               fetchSucceeded = true
               console.log(`[fetch-products] ✅ SUCCESS! Found item ${filters.itemId} as type ${itemType}`)
               break
+            } else if (response.status === 401) {
+              // Token expired - try to refresh
+              const errorText = await response.text()
+              console.log(`[fetch-products] 🔄 401 Unauthorized detected. Attempting token refresh...`)
+              
+              const refreshResult = await refreshNetSuiteToken(netsuiteConnection.id, credentials, accountId)
+              
+              if (refreshResult.success && refreshResult.newAccessToken) {
+                // Retry with new token
+                console.log(`[fetch-products] ♻️ Retrying with refreshed token...`)
+                credentials.access_token = refreshResult.newAccessToken
+                
+                const retryResponse = await fetch(endpoint, {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${credentials.access_token}`,
+                    'Content-Type': 'application/json',
+                    'prefer': 'transient'
+                  }
+                })
+                
+                if (retryResponse.ok) {
+                  const data = await retryResponse.json()
+                  items = [data]
+                  fetchSucceeded = true
+                  console.log(`[fetch-products] ✅ SUCCESS after token refresh! Found item ${filters.itemId} as type ${itemType}`)
+                  break
+                } else {
+                  const retryErrorText = await retryResponse.text()
+                  lastError = `${retryResponse.status}: ${retryErrorText} (after token refresh)`
+                  console.log(`[fetch-products] ❌ ${itemType}: Still failed after refresh - ${retryResponse.status}`)
+                }
+              } else {
+                lastError = `401: ${errorText} (token refresh failed: ${refreshResult.error})`
+                console.error(`[fetch-products] ❌ Token refresh failed: ${refreshResult.error}`)
+              }
             } else {
               const errorText = await response.text()
               lastError = `${response.status}: ${errorText}`
