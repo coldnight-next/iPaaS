@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Card, Table, Button, Space, Tag, Spin, Alert, Typography, Row, Col, Select, Input, Checkbox, Statistic, Tabs, Modal, message, Radio, DatePicker, InputNumber, Collapse, Drawer, Form } from 'antd'
-import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined, SwapOutlined, DatabaseOutlined, EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons'
+import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined, SwapOutlined, DatabaseOutlined, EditOutlined, SaveOutlined, CloseOutlined, PlusCircleOutlined } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import dayjs from 'dayjs'
@@ -118,6 +118,7 @@ export default function ProductSyncPreview() {
   const [detailsDrawerVisible, setDetailsDrawerVisible] = useState(false)
   const [detailsProduct, setDetailsProduct] = useState<Product | null>(null)
   const [form] = Form.useForm()
+  const [addingToSyncList, setAddingToSyncList] = useState<string | null>(null)
 
   const loadProducts = async () => {
     if (!session) {
@@ -340,6 +341,62 @@ export default function ProductSyncPreview() {
     setDetailsDrawerVisible(true)
   }
 
+  const addToSyncList = async (product: Product) => {
+    if (!session) {
+      message.error('Please log in to add items to sync list')
+      return
+    }
+    
+    setAddingToSyncList(product.id)
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      if (!userData.user) throw new Error('User not found')
+
+      // Check if item already exists in sync list
+      const { data: existing } = await supabase
+        .from('sync_list')
+        .select('id')
+        .eq('user_id', userData.user.id)
+        .eq('item_type', 'product')
+        .eq('source_platform', product.platform)
+        .eq('source_id', product.id)
+        .single()
+
+      if (existing) {
+        message.warning('This product is already in your sync list')
+        return
+      }
+
+      // Add to sync list
+      const { error } = await supabase
+        .from('sync_list')
+        .insert({
+          user_id: userData.user.id,
+          item_type: 'product',
+          source_platform: product.platform,
+          target_platform: syncDirection === 'netsuite-to-shopify' ? 'shopify' : 'netsuite',
+          source_id: product.id,
+          sync_mode: 'delta',
+          is_active: true,
+          filter_config: fetchFilters,
+          metadata: {
+            name: product.name,
+            sku: product.sku,
+            price: product.price
+          }
+        })
+
+      if (error) throw error
+
+      message.success(`${product.name} added to sync list`)
+    } catch (error: any) {
+      console.error('Error adding to sync list:', error)
+      message.error(error.message || 'Failed to add to sync list')
+    } finally {
+      setAddingToSyncList(null)
+    }
+  }
+
   const sourceProducts = syncDirection === 'netsuite-to-shopify' ? netsuiteProducts : shopifyProducts
   const filteredProducts = sourceProducts.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -456,7 +513,7 @@ export default function ProductSyncPreview() {
     {
       title: 'Actions',
       key: 'actions',
-      width: 280,
+      width: 340,
       fixed: 'right' as const,
       render: (_: any, record: Product) => {
         const isStaged = stagedProducts.has(record.id)
@@ -470,6 +527,15 @@ export default function ProductSyncPreview() {
               onClick={() => showDetails(record)}
             >
               Details
+            </Button>
+            <Button
+              size="small"
+              icon={<PlusCircleOutlined />}
+              onClick={() => addToSyncList(record)}
+              loading={addingToSyncList === record.id}
+              type="dashed"
+            >
+              Add to Sync List
             </Button>
             {!isStaged ? (
               <Button
