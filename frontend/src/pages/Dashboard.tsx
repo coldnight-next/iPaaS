@@ -8,8 +8,8 @@ import {
    ToolOutlined, MonitorOutlined, ApiOutlined, CloudSyncOutlined, DatabaseOutlined
 } from '@ant-design/icons'
 import { FileTextOutlined } from '@ant-design/icons'
-import FieldMappingManager from './components/FieldMappingManager'
-import MonitoringDashboard from './components/MonitoringDashboard'
+import FieldMappingManager from '../components/FieldMappingManager'
+import MonitoringDashboard from '../components/MonitoringDashboard'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
