@@ -11,6 +11,7 @@ import { FileTextOutlined } from '@ant-design/icons'
 import FieldMappingManager from '../components/FieldMappingManager'
 import MonitoringDashboard from '../components/MonitoringDashboard'
 import ManualConnectionSetup from '../components/ManualConnectionSetup'
+import ProductSyncPreview from '../components/ProductSyncPreview'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -1538,10 +1539,7 @@ export default function Dashboard() {
 
         {/* Products Management Page */}
         {activeTab === 'products' && (
-          <div>
-            <Typography.Title level={2} style={{ marginBottom: '24px' }}>
-              Products Management
-            </Typography.Title>
+          <ProductSyncPreview />
             <Row gutter={[16, 16]}>
               <Col span={24}>
                 <Card
@@ -1593,13 +1591,6 @@ export default function Dashboard() {
                       },
                     ]}
                     dataSource={[]}
-                    locale={{ emptyText: 'No products loaded yet. Click "Sync from Platforms" to load products.' }}
-                    pagination={{ pageSize: 20 }}
-                  />
-                </Card>
-              </Col>
-            </Row>
-          </div>
         )}
 
         {/* Inventory Management Page */}
