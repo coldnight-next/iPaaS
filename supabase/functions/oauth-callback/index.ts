@@ -285,7 +285,15 @@ async function handleNetSuiteTokenExchange(
   supabase: any,
   redirectWithStatus: (status: 'success' | 'error', message: string) => Response
 ): Promise<Response> {
-  const tokenResponse = await fetch('https://system.netsuite.com/app/login/oauth2/token.nl', {
+  const redirectUri = `${Deno.env.get('OAUTH_FUNCTION_BASE_URL') || ''}/oauth-callback`
+  
+  console.log('[oauth-callback] NetSuite token exchange params:', {
+    accountId,
+    redirectUri,
+    codeLength: code?.length
+  })
+
+  const tokenResponse = await fetch(`https://system.netsuite.com/app/login/oauth2/token.nl?account=${accountId}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
@@ -294,8 +302,8 @@ async function handleNetSuiteTokenExchange(
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code: code,
-      redirect_uri: Deno.env.get('OAUTH_FUNCTION_BASE_URL') + '/oauth-callback'
-    })
+      redirect_uri: redirectUri
+    }).toString()
   })
 
   if (!tokenResponse.ok) {
