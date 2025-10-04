@@ -12,6 +12,7 @@ import FieldMappingManager from '../components/FieldMappingManager'
 import MonitoringDashboard from '../components/MonitoringDashboard'
 import ManualConnectionSetup from '../components/ManualConnectionSetup'
 import ProductSyncPreview from '../components/ProductSyncPreview'
+import SyncManagement from '../components/SyncManagement'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -1314,110 +1315,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {activeTab === 'sync-management' && isAdmin && (
-          <div>
-            <Typography.Title level={2} style={{ marginBottom: '24px' }}>
-              Sync Management
-            </Typography.Title>
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Card
-                  title="Manual Sync Initiation"
-                  extra={
-                    <Space>
-                      <Select
-                        placeholder="Select sync profile"
-                        style={{ width: '200px' }}
-                        defaultValue="default"
-                      >
-                        {syncProfiles.filter(p => p.isActive).map(profile => (
-                          <Select.Option key={profile.id} value={profile.id}>
-                            {profile.name}
-                          </Select.Option>
-                        ))}
-                      </Select>
-                      <Button
-                        type="primary"
-                        icon={<CloudSyncOutlined />}
-                        onClick={() => {
-                          const selectedProfile = syncProfiles.find(p => p.id === '1') // Default to first profile
-                          if (selectedProfile) {
-                            void handleRunSync(selectedProfile)
-                          }
-                        }}
-                      >
-                        Start Profile Sync
-                      </Button>
-                    </Space>
-                  }
-                >
-                  <Typography.Text type="secondary" style={{ marginBottom: '16px', display: 'block' }}>
-                    Initiate manual synchronization between connected platforms
-                  </Typography.Text>
-                  <Row gutter={16}>
-                    <Col span={6}>
-                      <Card size="small" hoverable>
-                        <Typography.Text strong>Products</Typography.Text>
-                        <div style={{ marginTop: '8px' }}>
-                          <Button size="small" type="primary" style={{ marginRight: '8px' }}>
-                            Shopify → NetSuite
-                          </Button>
-                          <Button size="small">NetSuite → Shopify</Button>
-                        </div>
-                      </Card>
-                    </Col>
-                    <Col span={6}>
-                      <Card size="small" hoverable>
-                        <Typography.Text strong>Inventory</Typography.Text>
-                        <div style={{ marginTop: '8px' }}>
-                          <Button size="small" type="primary" style={{ marginRight: '8px' }}>
-                            NetSuite → Shopify
-                          </Button>
-                          <Button size="small">Shopify → NetSuite</Button>
-                        </div>
-                      </Card>
-                    </Col>
-                    <Col span={6}>
-                      <Card size="small" hoverable>
-                        <Typography.Text strong>Orders</Typography.Text>
-                        <div style={{ marginTop: '8px' }}>
-                          <Button size="small" type="primary" style={{ marginRight: '8px' }}>
-                            Shopify → NetSuite
-                          </Button>
-                          <Button size="small">NetSuite → Shopify</Button>
-                        </div>
-                      </Card>
-                    </Col>
-                    <Col span={6}>
-                      <Card size="small" hoverable>
-                        <Typography.Text strong>All Data</Typography.Text>
-                        <div style={{ marginTop: '8px' }}>
-                          <Button size="small" type="primary" style={{ marginRight: '8px' }}>
-                            Full Sync
-                          </Button>
-                          <Button size="small">Incremental</Button>
-                        </div>
-                      </Card>
-                    </Col>
-                  </Row>
-                </Card>
-              </Col>
-            </Row>
-            <Card title="Sync History" style={{ marginTop: '16px' }}>
-              <Table
-                columns={[
-                  { title: 'Sync Type', dataIndex: 'type', key: 'type' },
-                  { title: 'Status', dataIndex: 'status', key: 'status', render: (status: string) => <Tag color={status === 'success' ? 'green' : status === 'running' ? 'blue' : 'red'}>{status}</Tag> },
-                  { title: 'Start Time', dataIndex: 'startTime', key: 'startTime' },
-                  { title: 'Duration', dataIndex: 'duration', key: 'duration' },
-                  { title: 'Records', dataIndex: 'records', key: 'records' },
-                ]}
-                dataSource={[]}
-                locale={{ emptyText: 'No sync history available.' }}
-                pagination={{ pageSize: 10 }}
-              />
-            </Card>
-          </div>
+        {activeTab === 'sync-management' && (
+          <SyncManagement />
         )}
 
         {activeTab === 'user-management' && isAdmin && (
