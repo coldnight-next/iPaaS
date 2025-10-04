@@ -3,6 +3,7 @@ import { Card, Table, Button, Space, Tag, Spin, Alert, Typography, Row, Col, Sel
 import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SearchOutlined, FilterOutlined, ArrowRightOutlined, EyeOutlined, SwapOutlined, DatabaseOutlined, EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import dayjs from 'dayjs'
 
 const { Title, Text, Paragraph } = Typography
 const { TabPane } = Tabs
@@ -29,7 +30,8 @@ interface Product {
 
 interface FetchFilters {
   status?: string[]
-  dateRange?: [string, string]
+  dateFrom?: string
+  dateTo?: string
   priceMin?: number
   priceMax?: number
   inventoryMin?: number
@@ -37,6 +39,14 @@ interface FetchFilters {
   category?: string
   searchTerm?: string
   itemId?: string
+  vendor?: string
+  productType?: string
+  tags?: string[]
+  updatedAfter?: string
+  createdAfter?: string
+  hasImage?: boolean
+  isActive?: boolean
+  skuPattern?: string
 }
 
 interface SyncMapping {
@@ -540,101 +550,271 @@ export default function ProductSyncPreview() {
               </Space>
               {showFilters && (
                 <Card size="small" style={{ backgroundColor: '#fff' }}>
-                  <Alert
-                    message="Quick Tip"
-                    description="Use Item ID to fetch a single specific product, or use other filters to fetch multiple products."
-                    type="info"
-                    showIcon
-                    closable
-                    style={{ marginBottom: 16 }}
+                  <Collapse
+                    defaultActiveKey={['basic']}
+                    items={[
+                      {
+                        key: 'basic',
+                        label: <Text strong>Basic Filters</Text>,
+                        children: (
+                          <>
+                            <Alert
+                              message="Quick Tip"
+                              description="Use Item ID to fetch a single specific product, or combine other filters to fetch multiple products."
+                              type="info"
+                              showIcon
+                              closable
+                              style={{ marginBottom: 16 }}
+                            />
+                            <Row gutter={16}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Item ID (Single Product):</Text>
+                                  <Input
+                                    placeholder="Enter NetSuite or Shopify Item ID"
+                                    value={fetchFilters.itemId}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, itemId: e.target.value })}
+                                    allowClear
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Fetches only this specific product</Text>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Product Status:</Text>
+                                  <Select
+                                    mode="multiple"
+                                    placeholder="All statuses"
+                                    style={{ width: '100%' }}
+                                    value={fetchFilters.status}
+                                    onChange={(value) => setFetchFilters({ ...fetchFilters, status: value })}
+                                    disabled={!!fetchFilters.itemId}
+                                  >
+                                    <Select.Option value="active">Active</Select.Option>
+                                    <Select.Option value="draft">Draft</Select.Option>
+                                    <Select.Option value="archived">Archived</Select.Option>
+                                  </Select>
+                                </Space>
+                              </Col>
+                            </Row>
+                            <Row gutter={16} style={{ marginTop: 16 }}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Search Term:</Text>
+                                  <Input
+                                    placeholder="Search in product name, SKU, or description"
+                                    value={fetchFilters.searchTerm}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, searchTerm: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    prefix={<SearchOutlined />}
+                                  />
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>SKU Pattern:</Text>
+                                  <Input
+                                    placeholder="e.g., PROD-*, *-2024"
+                                    value={fetchFilters.skuPattern}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, skuPattern: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Use * as wildcard</Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                          </>
+                        )
+                      },
+                      {
+                        key: 'pricing',
+                        label: <Text strong>Pricing & Inventory</Text>,
+                        children: (
+                          <>
+                            <Row gutter={16}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Price Range:</Text>
+                                  <Space>
+                                    <InputNumber
+                                      placeholder="Min"
+                                      prefix="$"
+                                      value={fetchFilters.priceMin}
+                                      onChange={(value) => setFetchFilters({ ...fetchFilters, priceMin: value || undefined })}
+                                      disabled={!!fetchFilters.itemId}
+                                      style={{ width: '140px' }}
+                                    />
+                                    <Text>to</Text>
+                                    <InputNumber
+                                      placeholder="Max"
+                                      prefix="$"
+                                      value={fetchFilters.priceMax}
+                                      onChange={(value) => setFetchFilters({ ...fetchFilters, priceMax: value || undefined })}
+                                      disabled={!!fetchFilters.itemId}
+                                      style={{ width: '140px' }}
+                                    />
+                                  </Space>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Inventory Range:</Text>
+                                  <Space>
+                                    <InputNumber
+                                      placeholder="Min"
+                                      value={fetchFilters.inventoryMin}
+                                      onChange={(value) => setFetchFilters({ ...fetchFilters, inventoryMin: value || undefined })}
+                                      disabled={!!fetchFilters.itemId}
+                                      style={{ width: '140px' }}
+                                    />
+                                    <Text>to</Text>
+                                    <InputNumber
+                                      placeholder="Max"
+                                      value={fetchFilters.inventoryMax}
+                                      onChange={(value) => setFetchFilters({ ...fetchFilters, inventoryMax: value || undefined })}
+                                      disabled={!!fetchFilters.itemId}
+                                      style={{ width: '140px' }}
+                                    />
+                                  </Space>
+                                </Space>
+                              </Col>
+                            </Row>
+                          </>
+                        )
+                      },
+                      {
+                        key: 'classification',
+                        label: <Text strong>Product Classification</Text>,
+                        children: (
+                          <>
+                            <Row gutter={16}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Vendor/Brand:</Text>
+                                  <Input
+                                    placeholder="Enter vendor or brand name"
+                                    value={fetchFilters.vendor}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, vendor: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                  />
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Product Type/Category:</Text>
+                                  <Input
+                                    placeholder="e.g., Electronics, Apparel"
+                                    value={fetchFilters.productType}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, productType: e.target.value })}
+                                    disabled={!!fetchFilters.itemId}
+                                  />
+                                </Space>
+                              </Col>
+                            </Row>
+                            <Row gutter={16} style={{ marginTop: 16 }}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Tags:</Text>
+                                  <Select
+                                    mode="tags"
+                                    placeholder="Enter tags (comma-separated)"
+                                    style={{ width: '100%' }}
+                                    value={fetchFilters.tags}
+                                    onChange={(value) => setFetchFilters({ ...fetchFilters, tags: value })}
+                                    disabled={!!fetchFilters.itemId}
+                                    tokenSeparators={[',']}
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Products must have ALL these tags</Text>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Checkbox
+                                    checked={fetchFilters.hasImage}
+                                    onChange={(e) => setFetchFilters({ ...fetchFilters, hasImage: e.target.checked || undefined })}
+                                    disabled={!!fetchFilters.itemId}
+                                  >
+                                    <Text strong>Only products with images</Text>
+                                  </Checkbox>
+                                </Space>
+                              </Col>
+                            </Row>
+                          </>
+                        )
+                      },
+                      {
+                        key: 'dates',
+                        label: <Text strong>Date Filters</Text>,
+                        children: (
+                          <>
+                            <Row gutter={16}>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Created After:</Text>
+                                  <DatePicker
+                                    style={{ width: '100%' }}
+                                    placeholder="Select date"
+                                    value={fetchFilters.createdAfter ? dayjs(fetchFilters.createdAfter) : null}
+                                    onChange={(date) => setFetchFilters({ ...fetchFilters, createdAfter: date?.toISOString() })}
+                                    disabled={!!fetchFilters.itemId}
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Products created on or after this date</Text>
+                                </Space>
+                              </Col>
+                              <Col span={12}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Updated After:</Text>
+                                  <DatePicker
+                                    style={{ width: '100%' }}
+                                    placeholder="Select date"
+                                    value={fetchFilters.updatedAfter ? dayjs(fetchFilters.updatedAfter) : null}
+                                    onChange={(date) => setFetchFilters({ ...fetchFilters, updatedAfter: date?.toISOString() })}
+                                    disabled={!!fetchFilters.itemId}
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Products modified on or after this date</Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                            <Row gutter={16} style={{ marginTop: 16 }}>
+                              <Col span={24}>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Text strong>Date Range:</Text>
+                                  <RangePicker
+                                    style={{ width: '100%' }}
+                                    value={[
+                                      fetchFilters.dateFrom ? dayjs(fetchFilters.dateFrom) : null,
+                                      fetchFilters.dateTo ? dayjs(fetchFilters.dateTo) : null
+                                    ]}
+                                    onChange={(dates) => {
+                                      setFetchFilters({
+                                        ...fetchFilters,
+                                        dateFrom: dates?.[0]?.toISOString(),
+                                        dateTo: dates?.[1]?.toISOString()
+                                      })
+                                    }}
+                                    disabled={!!fetchFilters.itemId}
+                                  />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>Filter by last modified date range</Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                          </>
+                        )
+                      }
+                    ]}
                   />
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text strong>Item ID (Fetch Single Product):</Text>
-                        <Input
-                          placeholder="Enter NetSuite or Shopify Item ID"
-                          value={fetchFilters.itemId}
-                          onChange={(e) => setFetchFilters({ ...fetchFilters, itemId: e.target.value })}
-                          allowClear
-                        />
-                        <Text type="secondary" style={{ fontSize: '12px' }}>Leave empty to fetch multiple products with filters below</Text>
-                      </Space>
-                    </Col>
-                    <Col span={12}>
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text strong>Product Status:</Text>
-                        <Select
-                          mode="multiple"
-                          placeholder="Select status"
-                          style={{ width: '100%' }}
-                          value={fetchFilters.status}
-                          onChange={(value) => setFetchFilters({ ...fetchFilters, status: value })}
-                          disabled={!!fetchFilters.itemId}
-                        >
-                          <Select.Option value="active">Active</Select.Option>
-                          <Select.Option value="draft">Draft</Select.Option>
-                          <Select.Option value="archived">Archived</Select.Option>
-                        </Select>
-                      </Space>
-                    </Col>
-                  </Row>
-                  <Row gutter={16} style={{ marginTop: 16 }}>
-                    <Col span={12}>
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text strong>Price Range:</Text>
-                        <Space>
-                          <InputNumber
-                            placeholder="Min"
-                            prefix="$"
-                            value={fetchFilters.priceMin}
-                            onChange={(value) => setFetchFilters({ ...fetchFilters, priceMin: value || undefined })}
-                            disabled={!!fetchFilters.itemId}
-                          />
-                          <Text>to</Text>
-                          <InputNumber
-                            placeholder="Max"
-                            prefix="$"
-                            value={fetchFilters.priceMax}
-                            onChange={(value) => setFetchFilters({ ...fetchFilters, priceMax: value || undefined })}
-                            disabled={!!fetchFilters.itemId}
-                          />
-                        </Space>
-                      </Space>
-                    </Col>
-                    <Col span={12}>
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text strong>Inventory Range:</Text>
-                        <Space>
-                          <InputNumber
-                            placeholder="Min"
-                            value={fetchFilters.inventoryMin}
-                            onChange={(value) => setFetchFilters({ ...fetchFilters, inventoryMin: value || undefined })}
-                            disabled={!!fetchFilters.itemId}
-                          />
-                          <Text>to</Text>
-                          <InputNumber
-                            placeholder="Max"
-                            value={fetchFilters.inventoryMax}
-                            onChange={(value) => setFetchFilters({ ...fetchFilters, inventoryMax: value || undefined })}
-                            disabled={!!fetchFilters.itemId}
-                          />
-                        </Space>
-                      </Space>
-                    </Col>
-                  </Row>
-                  <Row gutter={16} style={{ marginTop: 16 }}>
-                    <Col span={12}>
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Text strong>Search Term:</Text>
-                        <Input
-                          placeholder="Search in product name or SKU"
-                          value={fetchFilters.searchTerm}
-                          onChange={(e) => setFetchFilters({ ...fetchFilters, searchTerm: e.target.value })}
-                          disabled={!!fetchFilters.itemId}
-                        />
-                      </Space>
-                    </Col>
+                  <Row style={{ marginTop: 16 }}>
+                    <Space>
+                      <Button
+                        icon={<CloseOutlined />}
+                        onClick={() => setFetchFilters({})}
+                      >
+                        Clear All Filters
+                      </Button>
+                      <Text type="secondary">
+                        {Object.keys(fetchFilters).length > 0 && `${Object.keys(fetchFilters).length} filter(s) active`}
+                      </Text>
+                    </Space>
                   </Row>
                   <Row style={{ marginTop: 16 }}>
                     <Button

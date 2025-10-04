@@ -37,6 +37,76 @@ function applyFilters(products: any[], filters: any): any[] {
     )
   }
 
+  // SKU pattern filter (supports wildcards)
+  if (filters.skuPattern) {
+    const pattern = filters.skuPattern
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // Escape regex special chars
+      .replace(/\*/g, '.*') // Convert * to .*
+    const regex = new RegExp(`^${pattern}$`, 'i')
+    filtered = filtered.filter(p => p.sku && regex.test(p.sku))
+  }
+
+  // Vendor/Brand filter
+  if (filters.vendor) {
+    const vendor = filters.vendor.toLowerCase()
+    filtered = filtered.filter(p => 
+      p.vendor?.toLowerCase().includes(vendor) ||
+      p.brand?.toLowerCase().includes(vendor)
+    )
+  }
+
+  // Product type/category filter
+  if (filters.productType) {
+    const type = filters.productType.toLowerCase()
+    filtered = filtered.filter(p => 
+      p.productType?.toLowerCase().includes(type) ||
+      p.category?.toLowerCase().includes(type)
+    )
+  }
+
+  // Tags filter (must have ALL tags)
+  if (filters.tags && filters.tags.length > 0) {
+    filtered = filtered.filter(p => {
+      if (!p.tags || !Array.isArray(p.tags)) return false
+      const productTags = p.tags.map((t: string) => t.toLowerCase())
+      return filters.tags.every((tag: string) => 
+        productTags.includes(tag.toLowerCase())
+      )
+    })
+  }
+
+  // Has image filter
+  if (filters.hasImage) {
+    filtered = filtered.filter(p => p.image && p.image.length > 0)
+  }
+
+  // Date filters
+  if (filters.createdAfter) {
+    const afterDate = new Date(filters.createdAfter)
+    filtered = filtered.filter(p => {
+      if (!p.createdAt) return false
+      return new Date(p.createdAt) >= afterDate
+    })
+  }
+
+  if (filters.updatedAfter) {
+    const afterDate = new Date(filters.updatedAfter)
+    filtered = filtered.filter(p => {
+      if (!p.updatedAt) return false
+      return new Date(p.updatedAt) >= afterDate
+    })
+  }
+
+  if (filters.dateFrom && filters.dateTo) {
+    const fromDate = new Date(filters.dateFrom)
+    const toDate = new Date(filters.dateTo)
+    filtered = filtered.filter(p => {
+      if (!p.lastModified && !p.updatedAt) return false
+      const itemDate = new Date(p.lastModified || p.updatedAt)
+      return itemDate >= fromDate && itemDate <= toDate
+    })
+  }
+
   return filtered
 }
 
@@ -151,6 +221,14 @@ serve(async (req) => {
           platform: 'netsuite',
           status: item.isInactive ? 'inactive' : 'active',
           description: item.description,
+          vendor: item.vendor?.name || item.vendorName,
+          productType: item.itemType || item.class?.name,
+          category: item.category?.name,
+          tags: item.tags || [],
+          image: item.image,
+          createdAt: item.createdDate,
+          updatedAt: item.lastModifiedDate,
+          lastModified: item.lastModifiedDate,
           rawData: item
         }))
         
@@ -214,6 +292,13 @@ serve(async (req) => {
             image: product.images?.[0]?.src,
             description: product.body_html,
             variants: product.variants?.length || 0,
+            vendor: product.vendor,
+            productType: product.product_type,
+            category: product.product_type,
+            tags: product.tags?.split(',').map((t: string) => t.trim()) || [],
+            createdAt: product.created_at,
+            updatedAt: product.updated_at,
+            lastModified: product.updated_at,
             rawData: product
           }
         })
