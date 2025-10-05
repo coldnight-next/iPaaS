@@ -4,6 +4,7 @@ import { createSupabaseClient, getUserFromRequest } from '../_shared/supabaseCli
 import { NetSuiteClient } from '../_shared/netsuiteClient.ts'
 import { ShopifyClient } from '../_shared/shopifyClient.ts'
 import { ProductSyncService, InventorySyncService, OrderSyncService, type SyncContext } from '../_shared/syncServices.ts'
+import { monitoringService } from '../_shared/monitoringService.ts'
 
 interface SyncProfile {
   id: string
@@ -189,6 +190,15 @@ serve(async req => {
       shopifyClient
     }
 
+    // Start monitoring session
+    const sessionId = await monitoringService.startSession({
+      userId: auth.user.id,
+      syncLogId: syncLog.id,
+      syncType: profile.syncDirection,
+      direction: profile.syncDirection,
+      totalItems: 0 // Will be updated as we process
+    })
+
     // Execute sync based on profile
     try {
       if (profile.dataTypes.products) {
@@ -223,6 +233,16 @@ serve(async req => {
       console.error('[sync] Sync execution error', error)
       result.status = 'failed'
       result.errors.push(error instanceof Error ? error.message : 'Unknown sync error')
+
+      // Create alert for sync failure
+      await monitoringService.createAlert({
+        userId: auth.user.id,
+        alertType: 'sync_failure',
+        severity: 'high',
+        title: 'Sync Operation Failed',
+        message: `Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        source: 'sync_engine'
+      })
     }
 
     result.duration = Date.now() - startTime
@@ -259,6 +279,15 @@ serve(async req => {
         }
       })
       .eq('id', syncLog.id)
+
+    // End monitoring session
+    await monitoringService.endSession(sessionId)
+
+    // Record performance metrics
+    await monitoringService.recordPerformanceMetrics(auth.user.id)
+
+    // Check for alerts
+    await monitoringService.checkAndCreateAlerts(auth.user.id)
 
     return corsJsonHeaders(200, result)
 

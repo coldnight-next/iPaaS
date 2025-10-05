@@ -406,4 +406,210 @@ insert into sync_configurations (user_id, config_key, config_value, description)
    (null, 'netsuite_settings', '{"api_version": "2023.2", "page_size": 1000, "rate_limit_delay": 1000}', 'NetSuite API configuration'),
    (null, 'shopify_settings', '{"api_version": "2024-01", "rate_limit_delay": 500, "max_request_retries": 3}', 'Shopify API configuration');
 
+-- Sync queue table for managing queued sync operations
+create table sync_queue (
+   id uuid primary key default gen_random_uuid(),
+   user_id uuid references auth.users on delete cascade,
+   sync_type text default 'manual' check (sync_type in ('manual', 'scheduled', 'webhook', 'bulk')),
+   direction text default 'bidirectional' check (direction in ('netsuite_to_shopify', 'shopify_to_netsuite', 'bidirectional')),
+   status text default 'queued' check (status in ('queued', 'processing', 'paused', 'completed', 'failed')),
+   priority integer default 1,
+   estimated_items integer default 0,
+   processed_items integer default 0,
+   failed_items integer default 0,
+   progress_percentage decimal(5,2) default 0,
+   current_operation text,
+   estimated_completion timestamp with time zone,
+   started_at timestamp with time zone,
+   queued_at timestamp with time zone default now(),
+   completed_at timestamp with time zone,
+   error_message text,
+   metadata jsonb default '{}',
+   created_at timestamp with time zone default now(),
+   updated_at timestamp with time zone default now()
+);
+
+-- System alerts table for monitoring and notifications
+create table system_alerts (
+   id uuid primary key default gen_random_uuid(),
+   user_id uuid references auth.users on delete cascade,
+   alert_type text not null check (alert_type in ('sync_failure', 'api_rate_limit', 'connection_error', 'performance_degradation', 'system_error')),
+   severity text default 'medium' check (severity in ('critical', 'high', 'medium', 'low', 'info')),
+   title text not null,
+   message text not null,
+   source text, -- e.g., 'netsuite', 'shopify', 'sync_engine'
+   is_acknowledged boolean default false,
+   acknowledged_at timestamp with time zone,
+   acknowledged_by uuid references auth.users,
+   is_resolved boolean default false,
+   resolved_at timestamp with time zone,
+   resolved_by uuid references auth.users,
+   metadata jsonb default '{}',
+   created_at timestamp with time zone default now(),
+   updated_at timestamp with time zone default now()
+);
+
+-- Sync performance stats table for metrics and analytics
+create table sync_performance_stats (
+   id uuid primary key default gen_random_uuid(),
+   user_id uuid references auth.users on delete cascade,
+   time_period text not null check (time_period in ('hour', 'day', 'week', 'month')),
+   period_start timestamp with time zone not null,
+   period_end timestamp with time zone not null,
+   total_syncs integer default 0,
+   successful_syncs integer default 0,
+   failed_syncs integer default 0,
+   total_items integer default 0,
+   successful_items integer default 0,
+   failed_items integer default 0,
+   avg_duration_seconds decimal(10,2) default 0,
+   avg_items_per_second decimal(10,2) default 0,
+   error_rate_percentage decimal(5,2) default 0,
+   peak_concurrent_syncs integer default 0,
+   total_api_calls integer default 0,
+   api_rate_limit_hits integer default 0,
+   metadata jsonb default '{}',
+   created_at timestamp with time zone default now(),
+   unique(user_id, time_period, period_start)
+);
+
+-- Active sync sessions table for real-time monitoring
+create table active_sync_sessions (
+   id uuid primary key default gen_random_uuid(),
+   user_id uuid references auth.users on delete cascade,
+   sync_log_id uuid references sync_logs on delete cascade,
+   sync_type text default 'manual',
+   direction text default 'bidirectional',
+   status text default 'running' check (status in ('running', 'paused', 'completed', 'failed')),
+   total_items integer default 0,
+   processed_items integer default 0,
+   current_item_sku text,
+   items_per_second decimal(10,2) default 0,
+   elapsed_seconds integer default 0,
+   estimated_remaining_seconds integer,
+   started_at timestamp with time zone default now(),
+   last_updated timestamp with time zone default now(),
+   metadata jsonb default '{}',
+   created_at timestamp with time zone default now()
+);
+
+-- Indexes for monitoring tables
+create index idx_sync_queue_user on sync_queue(user_id);
+create index idx_sync_queue_status on sync_queue(status);
+create index idx_sync_queue_priority on sync_queue(priority desc);
+create index idx_sync_queue_queued_at on sync_queue(queued_at desc);
+
+create index idx_system_alerts_user on system_alerts(user_id);
+create index idx_system_alerts_severity on system_alerts(severity);
+create index idx_system_alerts_resolved on system_alerts(is_resolved);
+create index idx_system_alerts_created on system_alerts(created_at desc);
+
+create index idx_sync_performance_stats_user on sync_performance_stats(user_id);
+create index idx_sync_performance_stats_period on sync_performance_stats(time_period, period_start desc);
+
+create index idx_active_sync_sessions_user on active_sync_sessions(user_id);
+create index idx_active_sync_sessions_status on active_sync_sessions(status);
+create index idx_active_sync_sessions_started on active_sync_sessions(started_at desc);
+
+-- Row Level Security policies for monitoring tables
+alter table sync_queue enable row level security;
+alter table system_alerts enable row level security;
+alter table sync_performance_stats enable row level security;
+alter table active_sync_sessions enable row level security;
+
+-- RLS policies for sync_queue
+create policy "Users can view their own sync queue" on sync_queue
+   for select using (auth.uid() = user_id);
+
+create policy "Users can manage their own sync queue" on sync_queue
+   for all using (auth.uid() = user_id);
+
+-- RLS policies for system_alerts
+create policy "Users can view their own alerts" on system_alerts
+   for select using (auth.uid() = user_id);
+
+create policy "Users can manage their own alerts" on system_alerts
+   for all using (auth.uid() = user_id);
+
+-- RLS policies for sync_performance_stats
+create policy "Users can view their own performance stats" on sync_performance_stats
+   for select using (auth.uid() = user_id);
+
+create policy "Users can manage their own performance stats" on sync_performance_stats
+   for all using (auth.uid() = user_id);
+
+-- RLS policies for active_sync_sessions
+create policy "Users can view their own active sessions" on active_sync_sessions
+   for select using (auth.uid() = user_id);
+
+create policy "Users can manage their own active sessions" on active_sync_sessions
+   for all using (auth.uid() = user_id);
+
+-- Triggers for updated_at on monitoring tables
+create trigger update_sync_queue_updated_at
+   before update on sync_queue
+   for each row execute function update_updated_at_column();
+
+create trigger update_system_alerts_updated_at
+   before update on system_alerts
+   for each row execute function update_updated_at_column();
+
+create trigger update_active_sync_sessions_updated_at
+   before update on active_sync_sessions
+   for each row execute function update_updated_at_column();
+
+-- Function to create performance stats
+create or replace function create_performance_stats(
+   p_user_id uuid,
+   p_period_start timestamp with time zone,
+   p_period_end timestamp with time zone,
+   p_time_period text
+) returns void as $$
+declare
+   stats_record record;
+begin
+   -- Calculate stats from sync_logs for the period
+   select
+      count(*) as total_syncs,
+      count(case when status = 'completed' then 1 end) as successful_syncs,
+      count(case when status = 'failed' then 1 end) as failed_syncs,
+      coalesce(sum(items_processed), 0) as total_items,
+      coalesce(sum(items_succeeded), 0) as successful_items,
+      coalesce(sum(items_failed), 0) as failed_items,
+      coalesce(avg(duration_seconds), 0) as avg_duration_seconds,
+      case when sum(duration_seconds) > 0 then sum(items_processed) / sum(duration_seconds) else 0 end as avg_items_per_second,
+      case when count(*) > 0 then (count(case when status = 'failed' then 1 end)::decimal / count(*)::decimal) * 100 else 0 end as error_rate_percentage
+   into stats_record
+   from sync_logs
+   where user_id = p_user_id
+     and started_at >= p_period_start
+     and started_at < p_period_end;
+
+   -- Insert or update performance stats
+   insert into sync_performance_stats (
+      user_id, time_period, period_start, period_end,
+      total_syncs, successful_syncs, failed_syncs,
+      total_items, successful_items, failed_items,
+      avg_duration_seconds, avg_items_per_second, error_rate_percentage
+   ) values (
+      p_user_id, p_time_period, p_period_start, p_period_end,
+      stats_record.total_syncs, stats_record.successful_syncs, stats_record.failed_syncs,
+      stats_record.total_items, stats_record.successful_items, stats_record.failed_items,
+      stats_record.avg_duration_seconds, stats_record.avg_items_per_second, stats_record.error_rate_percentage
+   )
+   on conflict (user_id, time_period, period_start)
+   do update set
+      total_syncs = excluded.total_syncs,
+      successful_syncs = excluded.successful_syncs,
+      failed_syncs = excluded.failed_syncs,
+      total_items = excluded.total_items,
+      successful_items = excluded.successful_items,
+      failed_items = excluded.failed_items,
+      avg_duration_seconds = excluded.avg_duration_seconds,
+      avg_items_per_second = excluded.avg_items_per_second,
+      error_rate_percentage = excluded.error_rate_percentage,
+      updated_at = now();
+end;
+$$ language plpgsql;
+
 -- Note: The null user_id configurations are global defaults that can be overridden per user

@@ -92,7 +92,7 @@ export default function MonitoringDashboard({ session }: MonitoringDashboardProp
         .select('*')
         .eq('user_id', session.user.id)
         .in('status', ['queued', 'processing', 'paused'])
-        .order('priority', { ascending: true })
+        .order('priority', { ascending: false })
         .order('queued_at', { ascending: true })
 
       if (error) throw error
