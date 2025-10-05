@@ -80,8 +80,11 @@ export default function SyncManagement() {
   const [bulkSyncLoading, setBulkSyncLoading] = useState(false)
   const [syncSchedules, setSyncSchedules] = useState<SyncSchedule[]>([])
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false)
+  const [addItemModalVisible, setAddItemModalVisible] = useState(false)
+  const [addingItem, setAddingItem] = useState(false)
   const [form] = Form.useForm()
   const [scheduleForm] = Form.useForm()
+  const [addItemForm] = Form.useForm()
 
   useEffect(() => {
     if (session) {
@@ -504,6 +507,38 @@ export default function SyncManagement() {
     }
   }
 
+  const addItemToSyncList = async () => {
+    setAddingItem(true)
+    try {
+      const values = await addItemForm.validateFields()
+
+      const response = await fetch(`${FUNCTIONS_BASE}/add-item-to-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify(values)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to add item')
+      }
+
+      const result = await response.json()
+      message.success(result.message)
+      setAddItemModalVisible(false)
+      addItemForm.resetFields()
+      loadSyncList()
+    } catch (error: any) {
+      console.error('Error adding item to sync list:', error)
+      message.error(error.message || 'Failed to add item to sync list')
+    } finally {
+      setAddingItem(false)
+    }
+  }
+
   const patternsColumns = [
     {
       title: 'Name',
@@ -859,6 +894,13 @@ export default function SyncManagement() {
             <Space style={{ marginBottom: 16 }}>
               <Button
                 type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setAddItemModalVisible(true)}
+              >
+                Add Item by ID
+              </Button>
+              <Button
+                type="primary"
                 icon={<SyncOutlined />}
                 onClick={bulkSyncSelected}
                 loading={bulkSyncLoading}
@@ -1082,6 +1124,58 @@ export default function SyncManagement() {
                 <Select.Option value="netsuite_to_shopify">NetSuite → Shopify</Select.Option>
                 <Select.Option value="shopify_to_netsuite">Shopify → NetSuite</Select.Option>
                 <Select.Option value="bidirectional">Bidirectional</Select.Option>
+              </Select>
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        <Modal
+          title="Add Item to Sync List"
+          open={addItemModalVisible}
+          onOk={addItemToSyncList}
+          onCancel={() => {
+            setAddItemModalVisible(false)
+            addItemForm.resetFields()
+          }}
+          confirmLoading={addingItem}
+          width={500}
+          okText="Add Item"
+        >
+          <Alert
+            message="Add Specific Item by ID"
+            description="Enter a NetSuite item ID to fetch and add that specific item to your sync list. The item will be retrieved from NetSuite and stored in your products database."
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          <Form form={addItemForm} layout="vertical">
+            <Form.Item
+              label="NetSuite Item ID"
+              name="itemId"
+              rules={[{ required: true, message: 'Please enter the NetSuite item ID' }]}
+              tooltip="The internal ID or item ID from NetSuite (e.g., 42782)"
+            >
+              <Input placeholder="e.g., 42782" />
+            </Form.Item>
+            <Form.Item
+              label="Sync Direction"
+              name="syncDirection"
+              rules={[{ required: true }]}
+            >
+              <Select>
+                <Select.Option value="netsuite_to_shopify">NetSuite → Shopify</Select.Option>
+                <Select.Option value="shopify_to_netsuite">Shopify → NetSuite</Select.Option>
+                <Select.Option value="bidirectional">Bidirectional</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item
+              label="Sync Mode"
+              name="syncMode"
+              initialValue="delta"
+            >
+              <Select>
+                <Select.Option value="delta">Delta Sync (changes only)</Select.Option>
+                <Select.Option value="full">Full Sync (complete data)</Select.Option>
               </Select>
             </Form.Item>
           </Form>
