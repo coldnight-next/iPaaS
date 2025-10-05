@@ -61,6 +61,6 @@ export default defineConfig({
   },
   // Optimize dependencies
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js', 'socket.io-client']
+    include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js', 'socket.io-client', 'recharts']
   }
 })
