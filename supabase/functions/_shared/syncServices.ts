@@ -2,6 +2,8 @@ import { NetSuiteClient, type NetSuiteItem } from './netsuiteClient.ts'
 import { ShopifyClient, type ShopifyProduct } from './shopifyClient.ts'
 import { fieldMappingService } from './fieldMappingService.ts'
 import { rateLimitService } from './rateLimitService.ts'
+import { AISyncIntelligenceEngine, SyncIntelligenceContext } from './aiSyncIntelligence.ts'
+import { AdvancedErrorRecoverySystem } from './advancedErrorRecovery.ts'
 
 export interface SyncContext {
   supabase: any
@@ -9,6 +11,8 @@ export interface SyncContext {
   syncLogId: string
   netsuiteClient: NetSuiteClient
   shopifyClient: ShopifyClient
+  aiIntelligence?: AISyncIntelligenceEngine
+  errorRecovery?: AdvancedErrorRecoverySystem
 }
 
 export interface SyncResult {
@@ -135,9 +139,11 @@ export interface ProductMapping {
 
 export class ProductSyncService {
   private context: SyncContext
+  private errorRecovery?: AdvancedErrorRecoverySystem
 
   constructor(context: SyncContext) {
     this.context = context
+    this.errorRecovery = context.errorRecovery
   }
 
   async syncProducts(direction: string): Promise<SyncResult> {
@@ -293,6 +299,67 @@ export class ProductSyncService {
               )
             }
           } catch (error) {
+            // Use advanced error recovery system
+            if (this.errorRecovery) {
+              try {
+                const recoveryResult = await this.errorRecovery.recoverFromError({
+                  error: error instanceof Error ? error : new Error(String(error)),
+                  operation: 'create_shopify_product',
+                  entityId: nsItem.internalId,
+                  entityType: 'product',
+                  platform: 'shopify',
+                  attemptNumber: 1,
+                  timestamp: new Date(),
+                  metadata: {
+                    userId: this.context.userId,
+                    syncLogId: this.context.syncLogId,
+                    originalData: nsItem,
+                    mappedData
+                  }
+                }, {
+                  supabase: this.context.supabase,
+                  userId: this.context.userId,
+                  syncLogId: this.context.syncLogId,
+                  netsuiteClient: this.context.netsuiteClient,
+                  shopifyClient: this.context.shopifyClient,
+                  historicalData: {
+                    averageSyncTime: 0,
+                    successRate: 0,
+                    commonErrors: [],
+                    peakUsageHours: [],
+                    apiCallPatterns: [],
+                    dataVolumeTrends: []
+                  },
+                  systemMetrics: {
+                    currentLoad: 0,
+                    availableResources: {
+                      cpu: 100,
+                      memory: 100,
+                      networkBandwidth: 100,
+                      concurrentConnections: 100
+                    },
+                    networkLatency: 0,
+                    apiRateLimits: [],
+                    errorRates: {
+                      totalErrors: 0,
+                      errorRate: 0,
+                      errorTypes: {},
+                      recoverySuccessRate: 0
+                    }
+                  }
+                })
+
+                if (recoveryResult.success) {
+                  console.log(`[ProductSync] Error recovered for item ${nsItem.itemId}:`, recoveryResult.actionsTaken)
+                  result.succeeded++
+                  continue
+                }
+              } catch (recoveryError) {
+                console.error(`[ProductSync] Error recovery failed for item ${nsItem.itemId}:`, recoveryError)
+              }
+            }
+
+            // Fallback to original error handling
             result.failed++
             const errorMsg = error instanceof Error ? error.message : 'Unknown error'
             result.errors.push(`Item ${nsItem.itemId}: ${errorMsg}`)
@@ -498,7 +565,23 @@ export class ProductSyncService {
   }
 
   private async findOrCreateMapping(nsItem: NetSuiteItem): Promise<any> {
-    // First, ensure we have the NetSuite product in our database
+    // Optimized: Use single query with JOIN to find existing mapping and product
+    const { data: existingMapping } = await this.context.supabase
+      .from('item_mappings')
+      .select(`
+        *,
+        products!inner(id, platform_product_id)
+      `)
+      .eq('user_id', this.context.userId)
+      .eq('products.platform_product_id', nsItem.internalId)
+      .eq('products.platform', 'netsuite')
+      .maybeSingle()
+
+    if (existingMapping) {
+      return existingMapping
+    }
+
+    // If no mapping exists, ensure we have the NetSuite product
     const { data: netsuiteProduct } = await this.context.supabase
       .from('products')
       .select('id')
@@ -509,18 +592,6 @@ export class ProductSyncService {
 
     if (!netsuiteProduct) {
       throw new Error(`NetSuite product ${nsItem.internalId} not found in database`)
-    }
-
-    // Try to find existing mapping for this NetSuite product
-    const { data: existing } = await this.context.supabase
-      .from('item_mappings')
-      .select('*')
-      .eq('user_id', this.context.userId)
-      .eq('netsuite_product_id', netsuiteProduct.id)
-      .maybeSingle()
-
-    if (existing) {
-      return existing
     }
 
     // Create new mapping

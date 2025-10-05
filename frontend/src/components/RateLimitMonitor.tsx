@@ -64,10 +64,20 @@ const RateLimitMonitor: React.FC<RateLimitMonitorProps> = ({
       setLoading(true)
       setError(null)
 
+      // Get current user ID
+      let currentUserId = userId
+      if (!currentUserId) {
+        const { data: { user } } = await supabase.auth.getUser()
+        currentUserId = user?.id
+        if (!currentUserId) {
+          throw new Error('User not authenticated')
+        }
+      }
+
       // Fetch NetSuite status
       const { data: nsData, error: nsError } = await supabase
         .rpc('get_rate_limit_status', {
-          p_user_id: userId || (await supabase.auth.getUser()).data.user?.id,
+          p_user_id: currentUserId,
           p_platform: 'netsuite'
         })
 
@@ -77,7 +87,7 @@ const RateLimitMonitor: React.FC<RateLimitMonitorProps> = ({
       // Fetch Shopify status
       const { data: sfData, error: sfError } = await supabase
         .rpc('get_rate_limit_status', {
-          p_user_id: userId || (await supabase.auth.getUser()).data.user?.id,
+          p_user_id: currentUserId,
           p_platform: 'shopify'
         })
 
@@ -94,9 +104,19 @@ const RateLimitMonitor: React.FC<RateLimitMonitorProps> = ({
 
   const resetRateLimit = async (platform: 'netsuite' | 'shopify') => {
     try {
+      // Get current user ID
+      let currentUserId = userId
+      if (!currentUserId) {
+        const { data: { user } } = await supabase.auth.getUser()
+        currentUserId = user?.id
+        if (!currentUserId) {
+          throw new Error('User not authenticated')
+        }
+      }
+
       const { error } = await supabase
         .rpc('reset_rate_limit_state', {
-          p_user_id: userId || (await supabase.auth.getUser()).data.user?.id,
+          p_user_id: currentUserId,
           p_platform: platform
         })
 

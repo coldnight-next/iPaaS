@@ -15,7 +15,10 @@ import {
   Alert,
   Progress,
   Input,
-  Tooltip
+  Tooltip,
+  Collapse,
+  Checkbox,
+  DatePicker
 } from 'antd'
 import {
   SyncOutlined,
@@ -25,12 +28,17 @@ import {
   CloseCircleOutlined,
   ReloadOutlined,
   SearchOutlined,
-  InboxOutlined
+  InboxOutlined,
+  FilterOutlined,
+  ClearOutlined
 } from '@ant-design/icons'
 import type { Session } from '@supabase/supabase-js'
 
 const { Title, Text } = Typography
 const { Option } = Select
+const { Panel } = Collapse
+const { Search } = Input
+const { RangePicker } = DatePicker
 
 interface InventorySyncManagementProps {
   session: Session
@@ -61,6 +69,13 @@ const InventorySyncManagement: React.FC<InventorySyncManagementProps> = ({ sessi
   const [stockStatus, setStockStatus] = useState<string>('all')
   const [limit, setLimit] = useState<number>(100)
   const [showDiscrepanciesOnly, setShowDiscrepanciesOnly] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [locationFilter, setLocationFilter] = useState('')
+  const [minQuantity, setMinQuantity] = useState<number | undefined>()
+  const [maxQuantity, setMaxQuantity] = useState<number | undefined>()
+  const [minDiscrepancy, setMinDiscrepancy] = useState<number | undefined>()
+  const [maxDiscrepancy, setMaxDiscrepancy] = useState<number | undefined>()
+  const [lastUpdatedRange, setLastUpdatedRange] = useState<[any, any] | null>(null)
 
   // Stats
   const [stats, setStats] = useState({
@@ -86,6 +101,22 @@ const InventorySyncManagement: React.FC<InventorySyncManagementProps> = ({ sessi
     try {
       // Note: This would call your fetch-inventory edge function
       // For now, we'll show a placeholder
+      const params: any = {
+        limit,
+        searchTerm: searchTerm || undefined,
+        syncStatus: syncStatus !== 'all' ? syncStatus : undefined,
+        stockStatus: stockStatus !== 'all' ? stockStatus : undefined,
+        showDiscrepanciesOnly,
+        location: locationFilter || undefined,
+        minQuantity,
+        maxQuantity,
+        minDiscrepancy,
+        maxDiscrepancy,
+        lastUpdatedFrom: lastUpdatedRange?.[0]?.toISOString(),
+        lastUpdatedTo: lastUpdatedRange?.[1]?.toISOString()
+      }
+
+      console.log('Fetching inventory with filters:', params)
       message.info('Inventory preview functionality will fetch from NetSuite/Shopify')
       
       // Placeholder data
@@ -452,8 +483,213 @@ const InventorySyncManagement: React.FC<InventorySyncManagementProps> = ({ sessi
         />
       )}
 
-      {/* Filters */}
-      <Card title="Filters" style={{ marginBottom: '16px' }}>
+      {/* Advanced Filters */}
+      <Card style={{ marginBottom: '16px' }}>
+        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+          <Search
+            placeholder="Search by SKU, product name, or location..."
+            allowClear
+            style={{ width: 350 }}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onSearch={() => void fetchInventory()}
+            prefix={<SearchOutlined />}
+          />
+          <Button
+            icon={<FilterOutlined />}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            {showFilters ? 'Hide Filters' : 'Show Advanced Filters'}
+          </Button>
+          <Button
+            icon={<ClearOutlined />}
+            onClick={() => {
+              setSearchTerm('')
+              setSyncStatus('all')
+              setStockStatus('all')
+              setLimit(100)
+              setShowDiscrepanciesOnly(false)
+              setLocationFilter('')
+              setMinQuantity(undefined)
+              setMaxQuantity(undefined)
+              setMinDiscrepancy(undefined)
+              setMaxDiscrepancy(undefined)
+              setLastUpdatedRange(null)
+            }}
+          >
+            Clear All
+          </Button>
+        </Space>
+
+        {showFilters && (
+          <Card size="small" style={{ backgroundColor: '#f9f9f9' }}>
+            <Collapse defaultActiveKey={['basic']} ghost>
+              <Panel header={<Text strong>Basic Filters</Text>} key="basic">
+                <Row gutter={16}>
+                  <Col xs={24} md={8}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Location</Text>
+                    </div>
+                    <Input
+                      placeholder="e.g., Main Warehouse, Store 01"
+                      value={locationFilter}
+                      onChange={(e) => setLocationFilter(e.target.value)}
+                      allowClear
+                    />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Last Updated Range</Text>
+                    </div>
+                    <RangePicker
+                      value={lastUpdatedRange}
+                      onChange={(dates) => setLastUpdatedRange(dates)}
+                      style={{ width: '100%' }}
+                      format="MMM D, YYYY"
+                    />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Limit Results</Text>
+                    </div>
+                    <InputNumber
+                      value={limit}
+                      onChange={(val) => setLimit(val || 100)}
+                      min={1}
+                      max={1000}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                </Row>
+              </Panel>
+
+              <Panel header={<Text strong>Stock & Quantity</Text>} key="stock">
+                <Row gutter={16}>
+                  <Col xs={24} md={6}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Stock Status</Text>
+                    </div>
+                    <Select
+                      value={stockStatus}
+                      onChange={setStockStatus}
+                      style={{ width: '100%' }}
+                    >
+                      <Option value="all">All Items</Option>
+                      <Option value="in_stock">In Stock</Option>
+                      <Option value="low_stock">Low Stock (<10)</Option>
+                      <Option value="out_of_stock">Out of Stock</Option>
+                    </Select>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Sync Status</Text>
+                    </div>
+                    <Select
+                      value={syncStatus}
+                      onChange={setSyncStatus}
+                      style={{ width: '100%' }}
+                    >
+                      <Option value="all">All Statuses</Option>
+                      <Option value="synced">Synced</Option>
+                      <Option value="pending">Pending</Option>
+                      <Option value="conflict">Conflicts</Option>
+                      <Option value="error">Errors</Option>
+                    </Select>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Available Quantity Range</Text>
+                    </div>
+                    <Space>
+                      <InputNumber
+                        placeholder="Min"
+                        value={minQuantity}
+                        onChange={setMinQuantity}
+                        min={0}
+                        style={{ width: '80px' }}
+                      />
+                      <Text>to</Text>
+                      <InputNumber
+                        placeholder="Max"
+                        value={maxQuantity}
+                        onChange={setMaxQuantity}
+                        min={0}
+                        style={{ width: '80px' }}
+                      />
+                    </Space>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Discrepancy Range</Text>
+                    </div>
+                    <Space>
+                      <InputNumber
+                        placeholder="Min"
+                        value={minDiscrepancy}
+                        onChange={setMinDiscrepancy}
+                        style={{ width: '80px' }}
+                      />
+                      <Text>to</Text>
+                      <InputNumber
+                        placeholder="Max"
+                        value={maxDiscrepancy}
+                        onChange={setMaxDiscrepancy}
+                        style={{ width: '80px' }}
+                      />
+                    </Space>
+                  </Col>
+                </Row>
+                <Row gutter={16} style={{ marginTop: 16 }}>
+                  <Col xs={24} md={6}>
+                    <Checkbox
+                      checked={showDiscrepanciesOnly}
+                      onChange={(e) => setShowDiscrepanciesOnly(e.target.checked)}
+                    >
+                      <Text strong>Show discrepancies only</Text>
+                    </Checkbox>
+                  </Col>
+                </Row>
+              </Panel>
+            </Collapse>
+
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #e8e8e8' }}>
+              <Space>
+                <Button
+                  type="primary"
+                  onClick={() => void fetchInventory()}
+                  loading={loading}
+                  icon={<SearchOutlined />}
+                >
+                  Apply Filters
+                </Button>
+                <Text type="secondary">
+                  {[
+                    searchTerm && 'Search',
+                    locationFilter && 'Location',
+                    lastUpdatedRange && 'Date Range',
+                    stockStatus !== 'all' && 'Stock Status',
+                    syncStatus !== 'all' && 'Sync Status',
+                    (minQuantity !== undefined || maxQuantity !== undefined) && 'Quantity Range',
+                    (minDiscrepancy !== undefined || maxDiscrepancy !== undefined) && 'Discrepancy Range',
+                    showDiscrepanciesOnly && 'Discrepancies Only'
+                  ].filter(Boolean).length > 0 &&
+                    `${[
+                      searchTerm && 'Search',
+                      locationFilter && 'Location',
+                      lastUpdatedRange && 'Date Range',
+                      stockStatus !== 'all' && 'Stock Status',
+                      syncStatus !== 'all' && 'Sync Status',
+                      (minQuantity !== undefined || maxQuantity !== undefined) && 'Quantity Range',
+                      (minDiscrepancy !== undefined || maxDiscrepancy !== undefined) && 'Discrepancy Range',
+                      showDiscrepanciesOnly && 'Discrepancies Only'
+                    ].filter(Boolean).length} filter(s) active`
+                  }
+                </Text>
+              </Space>
+            </div>
+          </Card>
+        )}
+
         <Row gutter={16}>
           <Col xs={24} md={6}>
             <div style={{ marginBottom: '8px' }}>
@@ -524,14 +760,6 @@ const InventorySyncManagement: React.FC<InventorySyncManagementProps> = ({ sessi
             </Button>
           </Col>
         </Row>
-        <Button
-          type="primary"
-          onClick={() => void fetchInventory()}
-          loading={loading}
-          style={{ marginTop: '16px' }}
-        >
-          Apply Filters
-        </Button>
       </Card>
 
       {/* Inventory Table */}

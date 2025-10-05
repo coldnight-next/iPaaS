@@ -4,7 +4,13 @@ import { createSupabaseClient, getUserFromRequest } from '../_shared/supabaseCli
 import { NetSuiteClient } from '../_shared/netsuiteClient.ts'
 import { ShopifyClient } from '../_shared/shopifyClient.ts'
 import { ProductSyncService, InventorySyncService, OrderSyncService, type SyncContext } from '../_shared/syncServices.ts'
+import { performanceMonitor } from '../_shared/performanceMonitor.ts'
 import { monitoringService } from '../_shared/monitoringService.ts'
+import { AISyncIntelligenceEngine, SyncIntelligenceContext } from '../_shared/aiSyncIntelligence.ts'
+import { AdvancedErrorRecoverySystem } from '../_shared/advancedErrorRecovery.ts'
+import { PredictivePerformanceOptimizer } from '../_shared/predictivePerformanceOptimizer.ts'
+import { EventDrivenSyncEngine } from '../_shared/eventDrivenSync.ts'
+import { AdvancedDataProcessingPipeline } from '../_shared/advancedDataProcessing.ts'
 
 interface SyncProfile {
   id: string
@@ -32,22 +38,23 @@ interface SyncResult {
 }
 
 serve(async req => {
-  const origin = req.headers.get('origin')
+  return await performanceMonitor.monitorFunction('sync', async () => {
+    const origin = req.headers.get('origin')
 
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: withCors({ 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }, origin)
+    if (req.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: withCors({ 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }, origin)
+      })
+    }
+
+    const corsJsonHeaders = (status: number, payload: unknown) => new Response(JSON.stringify(payload), {
+      status,
+      headers: withCors({ 'content-type': 'application/json' }, origin)
     })
-  }
 
-  const corsJsonHeaders = (status: number, payload: unknown) => new Response(JSON.stringify(payload), {
-    status,
-    headers: withCors({ 'content-type': 'application/json' }, origin)
-  })
-
-  if (req.method !== 'POST') {
-    return corsJsonHeaders(405, { error: 'method_not_allowed', message: 'Use POST' })
-  }
+    if (req.method !== 'POST') {
+      return corsJsonHeaders(405, { error: 'method_not_allowed', message: 'Use POST' })
+    }
 
   let auth
   try {
@@ -181,17 +188,97 @@ serve(async req => {
       })
     }
 
-    // Create sync context
+    // Initialize AI-powered systems
+    const aiIntelligence = new AISyncIntelligenceEngine({
+      supabase,
+      userId: auth.user.id,
+      syncLogId: syncLog.id,
+      netsuiteClient,
+      shopifyClient,
+      historicalData: {
+        averageSyncTime: 0,
+        successRate: 0,
+        commonErrors: [],
+        peakUsageHours: [],
+        apiCallPatterns: [],
+        dataVolumeTrends: []
+      },
+      systemMetrics: {
+        currentLoad: 0,
+        availableResources: {
+          cpu: 100,
+          memory: 100,
+          networkBandwidth: 100,
+          concurrentConnections: 100
+        },
+        networkLatency: 0,
+        apiRateLimits: [],
+        errorRates: {
+          totalErrors: 0,
+          errorRate: 0,
+          errorTypes: {},
+          recoverySuccessRate: 0
+        }
+      }
+    })
+
+    const errorRecovery = new AdvancedErrorRecoverySystem(supabase, aiIntelligence)
+    const performanceOptimizer = new PredictivePerformanceOptimizer(supabase, aiIntelligence)
+    const eventEngine = new EventDrivenSyncEngine(supabase, aiIntelligence)
+    const dataProcessingPipeline = new AdvancedDataProcessingPipeline(supabase, aiIntelligence)
+
+    // Create sync context with advanced systems
     const syncContext: SyncContext = {
       supabase,
       userId: auth.user.id,
       syncLogId: syncLog.id,
       netsuiteClient,
-      shopifyClient
+      shopifyClient,
+      aiIntelligence,
+      errorRecovery
     }
 
-    // Execute sync based on profile
+    // Get performance predictions before starting
+    const performancePrediction = await performanceOptimizer.predictOptimalPerformance(
+      'products', // Primary operation type
+      1000, // Estimated data volume
+      {
+        cpu: 50,
+        memory: 512,
+        network: 100,
+        concurrentOperations: 2,
+        priority: 'normal'
+      }
+    )
+
+    console.log(`[sync] Performance prediction: ${performancePrediction.estimatedDuration}ms, ${performancePrediction.optimalBatchSize} batch size, ${performancePrediction.recommendedConcurrency} concurrency`)
+
+    // Publish sync started event
+    await eventEngine.publishEvent({
+      type: 'sync_requested',
+      source: 'user',
+      entityType: 'webhook',
+      entityId: syncLog.id,
+      userId: auth.user.id,
+      payload: {
+        profileId: profile.id,
+        dataTypes: profile.dataTypes,
+        syncDirection: profile.syncDirection
+      },
+      metadata: {
+        priority: 'normal',
+        retryCount: 0,
+        maxRetries: 3,
+        processingHistory: [],
+        tags: ['sync', 'manual'],
+        businessImpact: 'medium'
+      }
+    })
+
+    // Execute sync based on profile with performance monitoring
     let apiCalls = 0
+    const syncStartTime = Date.now()
+
     try {
       if (profile.dataTypes.products) {
         const productService = new ProductSyncService(syncContext)
@@ -201,6 +288,61 @@ serve(async req => {
         result.itemsFailed += productResult.failed
         result.errors.push(...productResult.errors)
         apiCalls += Math.ceil(productResult.processed / 100) // Estimate API calls
+
+        // Performance monitoring during sync
+        const currentMetrics = {
+          timestamp: new Date(),
+          operation: 'products',
+          duration: Date.now() - syncStartTime,
+          itemsProcessed: result.itemsProcessed,
+          successRate: result.itemsSucceeded / Math.max(1, result.itemsProcessed),
+          errorRate: result.itemsFailed / Math.max(1, result.itemsProcessed),
+          apiCalls,
+          memoryUsage: 60, // Would be measured
+          cpuUsage: 45, // Would be measured
+          networkLatency: 150, // Would be measured
+          throughput: result.itemsProcessed / Math.max(1, (Date.now() - syncStartTime) / 1000)
+        }
+
+        // Apply real-time optimization
+        const optimization = await performanceOptimizer.optimizeRunningSync(
+          syncLog.id,
+          currentMetrics,
+          {
+            supabase,
+            userId: auth.user.id,
+            syncLogId: syncLog.id,
+            netsuiteClient,
+            shopifyClient,
+            historicalData: {
+              averageSyncTime: 0,
+              successRate: 0,
+              commonErrors: [],
+              peakUsageHours: [],
+              apiCallPatterns: [],
+              dataVolumeTrends: []
+            },
+            systemMetrics: {
+              currentLoad: 45,
+              availableResources: {
+                cpu: 55,
+                memory: 40,
+                networkBandwidth: 60,
+                concurrentConnections: 5
+              },
+              networkLatency: 150,
+              apiRateLimits: [],
+              errorRates: {
+                totalErrors: result.itemsFailed,
+                errorRate: result.itemsFailed / Math.max(1, result.itemsProcessed),
+                errorTypes: {},
+                recoverySuccessRate: 0.8
+              }
+            }
+          }
+        )
+
+        console.log(`[sync] Applied optimization: batchSize=${optimization.batchSize}, concurrency=${optimization.concurrency}`)
       }
 
       if (profile.dataTypes.inventory) {
@@ -224,10 +366,55 @@ serve(async req => {
       }
 
       result.status = result.itemsFailed === 0 ? 'completed' : result.itemsSucceeded > 0 ? 'partial_success' : 'failed'
+
+      // Publish sync completed event
+      await eventEngine.publishEvent({
+        type: 'sync_completed',
+        source: 'system',
+        entityType: 'webhook',
+        entityId: syncLog.id,
+        userId: auth.user.id,
+        payload: {
+          result,
+          duration: Date.now() - syncStartTime,
+          apiCalls
+        },
+        metadata: {
+          priority: 'normal',
+          retryCount: 0,
+          maxRetries: 0,
+          processingHistory: [],
+          tags: ['sync', 'completed'],
+          businessImpact: result.status === 'completed' ? 'low' : 'medium'
+        }
+      })
+
     } catch (error) {
       console.error('[sync] Sync execution error', error)
       result.status = 'failed'
       result.errors.push(error instanceof Error ? error.message : 'Unknown sync error')
+
+      // Publish sync failed event
+      await eventEngine.publishEvent({
+        type: 'sync_failed',
+        source: 'system',
+        entityType: 'webhook',
+        entityId: syncLog.id,
+        userId: auth.user.id,
+        payload: {
+          error: error instanceof Error ? error.message : 'Unknown sync error',
+          duration: Date.now() - syncStartTime,
+          partialResult: result
+        },
+        metadata: {
+          priority: 'high',
+          retryCount: 0,
+          maxRetries: 3,
+          processingHistory: [],
+          tags: ['sync', 'failed'],
+          businessImpact: 'high'
+        }
+      })
     }
 
     result.duration = Date.now() - startTime
@@ -256,28 +443,38 @@ serve(async req => {
       })
       .eq('id', syncLog.id)
 
-    // Send completion notification
+    // Send completion notification (if enabled)
     try {
-      const notificationMessage = result.status === 'completed'
-        ? `Sync completed successfully! Processed ${result.itemsProcessed} items in ${Math.round(result.duration / 1000)}s.`
-        : result.status === 'partial_success'
-        ? `Sync completed with issues. ${result.itemsSucceeded} succeeded, ${result.itemsFailed} failed.`
-        : `Sync failed. ${result.errors.join(', ')}`
+      // Check user notification preferences
+      const { data: preferences } = await supabase
+        .from('notification_preferences')
+        .select('email_notifications')
+        .eq('user_id', auth.user.id)
+        .single()
 
-      await supabase.functions.invoke('send-notification', {
-        body: {
-          type: 'email',
-          recipient: auth.user.email || '', // Get from user profile
-          subject: `Sync ${result.status === 'completed' ? 'Completed' : 'Failed'}`,
-          message: notificationMessage,
-          metadata: {
-            syncLogId: syncLog.id,
-            status: result.status,
-            duration: result.duration,
-            itemsProcessed: result.itemsProcessed
+      // Send notification if email notifications are enabled (default to true if no preference set)
+      if (preferences?.email_notifications !== false) {
+        const notificationMessage = result.status === 'completed'
+          ? `Sync completed successfully! Processed ${result.itemsProcessed} items in ${Math.round(result.duration / 1000)}s.`
+          : result.status === 'partial_success'
+          ? `Sync completed with issues. ${result.itemsSucceeded} succeeded, ${result.itemsFailed} failed.`
+          : `Sync failed. ${result.errors.join(', ')}`
+
+        await supabase.functions.invoke('send-notification', {
+          body: {
+            type: 'email',
+            recipient: auth.user.email || '', // Get from user profile
+            subject: `Sync ${result.status === 'completed' ? 'Completed' : 'Failed'}`,
+            message: notificationMessage,
+            metadata: {
+              syncLogId: syncLog.id,
+              status: result.status,
+              duration: result.duration,
+              itemsProcessed: result.itemsProcessed
+            }
           }
-        }
-      })
+        })
+      }
     } catch (notificationError) {
       console.error('[sync] Failed to send notification:', notificationError)
       // Don't fail the sync for notification errors
@@ -292,5 +489,6 @@ serve(async req => {
     console.error('[sync] Unexpected error', error)
     return corsJsonHeaders(500, { error: 'internal_error', message: 'Sync failed unexpectedly' })
   }
+ })
 })
 

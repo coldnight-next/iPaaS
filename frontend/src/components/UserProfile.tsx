@@ -15,7 +15,8 @@ import {
   Tag,
   Alert,
   Modal,
-  List
+  List,
+  Checkbox
 } from 'antd'
 import {
   UserOutlined,
@@ -25,7 +26,10 @@ import {
   CameraOutlined,
   SaveOutlined,
   HistoryOutlined,
-  TeamOutlined
+  TeamOutlined,
+  BellOutlined,
+  SlackOutlined,
+  MessageOutlined
 } from '@ant-design/icons'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
@@ -59,12 +63,21 @@ const UserProfile: React.FC<UserProfileProps> = ({ session }) => {
   const [profile, setProfile] = useState<UserProfileData | null>(null)
   const [passwordModalVisible, setPasswordModalVisible] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
-  
+  const [notificationPreferences, setNotificationPreferences] = useState({
+    email_notifications: true,
+    slack_notifications: false,
+    sms_notifications: false,
+    quiet_hours_start: null,
+    quiet_hours_end: null
+  })
+
   const [form] = Form.useForm()
   const [passwordForm] = Form.useForm()
+  const [notificationForm] = Form.useForm()
 
   useEffect(() => {
     void loadProfile()
+    void loadNotificationPreferences()
   }, [session])
 
   const loadProfile = async () => {
@@ -152,6 +165,74 @@ const UserProfile: React.FC<UserProfileProps> = ({ session }) => {
       message.error('Failed to change password')
     } finally {
       setChangingPassword(false)
+    }
+  }
+
+  const loadNotificationPreferences = async () => {
+    if (!session) return
+
+    try {
+      const { data, error } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single()
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "not found"
+        throw error
+      }
+
+      if (data) {
+        setNotificationPreferences({
+          email_notifications: data.email_notifications ?? true,
+          slack_notifications: data.slack_notifications ?? false,
+          sms_notifications: data.sms_notifications ?? false,
+          quiet_hours_start: data.quiet_hours_start,
+          quiet_hours_end: data.quiet_hours_end
+        })
+
+        notificationForm.setFieldsValue({
+          emailNotifications: data.email_notifications ?? true,
+          slackNotifications: data.slack_notifications ?? false,
+          smsNotifications: data.sms_notifications ?? false,
+          quietHoursStart: data.quiet_hours_start,
+          quietHoursEnd: data.quiet_hours_end
+        })
+      } else {
+        // Set defaults
+        notificationForm.setFieldsValue({
+          emailNotifications: true,
+          slackNotifications: false,
+          smsNotifications: false
+        })
+      }
+    } catch (error) {
+      console.error('Error loading notification preferences:', error)
+    }
+  }
+
+  const handleSaveNotificationPreferences = async (values: any) => {
+    if (!session) return
+
+    try {
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert({
+          user_id: session.user.id,
+          email_notifications: values.emailNotifications,
+          slack_notifications: values.slackNotifications,
+          sms_notifications: values.smsNotifications,
+          quiet_hours_start: values.quietHoursStart,
+          quiet_hours_end: values.quietHoursEnd
+        })
+
+      if (error) throw error
+
+      message.success('Notification preferences updated successfully')
+      await loadNotificationPreferences()
+    } catch (error) {
+      console.error('Error saving notification preferences:', error)
+      message.error('Failed to update notification preferences')
     }
   }
 
@@ -390,6 +471,108 @@ const UserProfile: React.FC<UserProfileProps> = ({ session }) => {
                     Save Changes
                   </Button>
                   <Button onClick={() => form.resetFields()}>
+                    Reset
+                  </Button>
+                </Space>
+              </Form.Item>
+            </Form>
+          </Card>
+
+          {/* Notification Preferences Card */}
+          <Card title="Notification Preferences" style={{ marginTop: '16px' }}>
+            <Form
+              form={notificationForm}
+              layout="vertical"
+              onFinish={handleSaveNotificationPreferences}
+            >
+              <Alert
+                message="Sync Completion Notifications"
+                description="Receive email notifications when your sync operations complete. You can customize which types of notifications you want to receive."
+                type="info"
+                showIcon
+                style={{ marginBottom: '16px' }}
+              />
+
+              <Form.Item
+                label="Email Notifications"
+                name="emailNotifications"
+                valuePropName="checked"
+              >
+                <Checkbox>
+                  <Space>
+                    <MailOutlined />
+                    <span>Send email notifications for sync completion</span>
+                  </Space>
+                </Checkbox>
+              </Form.Item>
+
+              <Form.Item
+                label="Slack Notifications"
+                name="slackNotifications"
+                valuePropName="checked"
+              >
+                <Checkbox disabled>
+                  <Space>
+                    <SlackOutlined />
+                    <span>Send Slack notifications (Coming Soon)</span>
+                  </Space>
+                </Checkbox>
+              </Form.Item>
+
+              <Form.Item
+                label="SMS Notifications"
+                name="smsNotifications"
+                valuePropName="checked"
+              >
+                <Checkbox disabled>
+                  <Space>
+                    <MessageOutlined />
+                    <span>Send SMS notifications (Coming Soon)</span>
+                  </Space>
+                </Checkbox>
+              </Form.Item>
+
+              <Divider />
+
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    label="Quiet Hours Start"
+                    name="quietHoursStart"
+                    tooltip="Don't send notifications during these hours"
+                  >
+                    <Input
+                      type="time"
+                      placeholder="22:00"
+                      disabled
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    label="Quiet Hours End"
+                    name="quietHoursEnd"
+                    tooltip="Resume notifications after this time"
+                  >
+                    <Input
+                      type="time"
+                      placeholder="08:00"
+                      disabled
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item>
+                <Space>
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    icon={<SaveOutlined />}
+                  >
+                    Save Preferences
+                  </Button>
+                  <Button onClick={() => notificationForm.resetFields()}>
                     Reset
                   </Button>
                 </Space>

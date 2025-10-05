@@ -3,6 +3,7 @@ import { Card, Table, Button, Space, Tag, Modal, Form, Input, Select, message, D
 import { SaveOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, FilterOutlined, ClockCircleOutlined, ThunderboltOutlined, ReloadOutlined } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import EnhancedProductSearch from './EnhancedProductSearch'
 
 const { Title, Text } = Typography
 const { TabPane } = Tabs
@@ -891,6 +892,26 @@ export default function SyncManagement() {
                 </Card>
               </Col>
             </Row>
+            {/* Enhanced Product Search */}
+            <Card style={{ marginBottom: 16 }}>
+              <EnhancedProductSearch
+                placeholder="Search products to add to sync list..."
+                onProductSelect={(product) => {
+                  // Add selected product to sync list
+                  addToSyncList({
+                    id: product.platform_product_id,
+                    name: product.name,
+                    sku: product.sku,
+                    platform: product.platform
+                  }, 'netsuite_to_shopify') // Default direction
+                }}
+                showFilters={true}
+                showHistory={true}
+                maxResults={20}
+                enableFuzzyMatching={true}
+              />
+            </Card>
+
             <Space style={{ marginBottom: 16 }}>
               <Button
                 type="primary"

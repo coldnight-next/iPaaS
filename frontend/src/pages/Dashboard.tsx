@@ -4,8 +4,9 @@ import { supabase, db, type Connection } from '../lib/supabase'
 import { Avatar, Badge, Button, Card, Dropdown, Statistic, Table, Form, Input, Typography, Alert, Space, Tag, Row, Col, Steps, message, Checkbox, Modal, Select, Switch } from 'antd'
 import {
   UserOutlined, LogoutOutlined, DashboardOutlined, LinkOutlined, SettingOutlined,
-   SyncOutlined, UsergroupAddOutlined, LockOutlined,
-   ToolOutlined, MonitorOutlined, ApiOutlined, CloudSyncOutlined, DatabaseOutlined
+    SyncOutlined, UsergroupAddOutlined, LockOutlined,
+    ToolOutlined, MonitorOutlined, ApiOutlined, CloudSyncOutlined, DatabaseOutlined,
+    MenuOutlined, ThunderboltOutlined
 } from '@ant-design/icons'
 import { FileTextOutlined } from '@ant-design/icons'
 import FieldMappingManager from '../components/FieldMappingManager'
@@ -13,6 +14,7 @@ import MonitoringDashboard from '../components/MonitoringDashboard'
 import ManualConnectionSetup from '../components/ManualConnectionSetup'
 import ProductSyncPreview from '../components/ProductSyncPreview'
 import SyncManagement from '../components/SyncManagement'
+import SyncQueueViewer from '../components/SyncQueueViewer'
 import UserManagement from '../components/UserManagement'
 import OrderSyncManagement from '../components/OrderSyncManagement'
 import InventorySyncManagement from '../components/InventorySyncManagement'
@@ -21,7 +23,8 @@ import ThemeToggle from '../components/ThemeToggle'
 import NotificationCenter from '../components/NotificationCenter'
 import EnhancedKPICard from '../components/EnhancedKPICard'
 import InteractiveChart from '../components/InteractiveChart'
-import { StatsSkeleton } from '../components/SkeletonLoader'
+import RateLimitMonitor from '../components/RateLimitMonitor'
+import { StatsSkeleton, CardSkeleton, TableSkeleton } from '../components/SkeletonLoader'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -105,12 +108,16 @@ export default function Dashboard() {
 
   // Sidebar responsive state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   // Auto-collapse sidebar on mobile
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 768) {
         setSidebarCollapsed(true)
+        setMobileSidebarOpen(false)
+      } else {
+        setSidebarCollapsed(false)
       }
     }
 
@@ -400,6 +407,11 @@ export default function Dashboard() {
       label: 'Sync Automation',
     },
     {
+      key: 'sync-queue',
+      icon: <SyncOutlined />,
+      label: 'Sync Queue',
+    },
+    {
       type: 'divider' as const,
       key: 'divider-config',
     },
@@ -453,16 +465,33 @@ export default function Dashboard() {
 
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
+      {/* Mobile sidebar overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="mobile-sidebar-overlay md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div style={{
-        width: sidebarCollapsed ? '80px' : '280px',
-        minWidth: sidebarCollapsed ? '80px' : '280px',
-        background: '#001529',
-        color: 'white',
-        padding: '16px',
-        position: 'relative',
-        transition: 'width 0.3s ease, min-width 0.3s ease'
-      }}>
+      <div
+        style={{
+          width: sidebarCollapsed ? '80px' : '280px',
+          minWidth: sidebarCollapsed ? '80px' : '280px',
+          background: '#001529',
+          color: 'white',
+          padding: '16px',
+          position: window.innerWidth < 768 ? 'fixed' : 'relative',
+          left: window.innerWidth < 768 && !mobileSidebarOpen ? '-280px' : '0',
+          top: 0,
+          bottom: 0,
+          zIndex: 1000,
+          transition: 'left 0.3s ease',
+          boxShadow: window.innerWidth < 768 ? '2px 0 8px rgba(0,0,0,0.15)' : 'none'
+        }}
+        aria-label="Main navigation"
+        role="navigation"
+      >
         <div style={{
           marginBottom: '24px',
           fontSize: sidebarCollapsed ? '14px' : '20px',
@@ -473,7 +502,8 @@ export default function Dashboard() {
         }}>
           {sidebarCollapsed ? '⚡' : '⚡ SyncFlow'}
         </div>
-        <div style={{
+        {/* Desktop sidebar toggle */}
+        <div className="hidden md:block" style={{
           position: 'absolute',
           top: '16px',
           right: '-12px',
@@ -490,6 +520,28 @@ export default function Dashboard() {
         }} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
           {sidebarCollapsed ? '→' : '←'}
         </div>
+
+        {/* Mobile sidebar close button */}
+        <button
+          className="md:hidden"
+          style={{
+            position: 'absolute',
+            top: '16px',
+            right: '16px',
+            background: 'transparent',
+            border: 'none',
+            color: 'white',
+            fontSize: '18px',
+            cursor: 'pointer',
+            zIndex: 1001,
+            padding: '4px',
+            borderRadius: '4px'
+          }}
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-label="Close navigation menu"
+        >
+          ✕
+        </button>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {menuItems.map((item, index) => {
             if (item.type === 'divider') {
@@ -557,29 +609,42 @@ export default function Dashboard() {
       {/* Main Content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
-        <div style={{ 
-          padding: '16px 24px', 
-          borderBottom: '1px solid #d9d9d9', 
-          display: 'flex', 
-          justifyContent: 'space-between', 
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid #d9d9d9',
+          display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'center',
           background: 'linear-gradient(to right, #fafafa, #ffffff)'
         }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <Typography.Title level={4} style={{ margin: 0 }}>
-              {menuItems.find(item => item.key === activeTab)?.label || 'Dashboard'}
-            </Typography.Title>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Badge
-                status={activeConnections.length > 0 ? 'success' : 'warning'}
-                text={`${activeConnections.length} connection${activeConnections.length !== 1 ? 's' : ''}`}
-              />
-              {showAdminMenu && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {/* Mobile menu button */}
+            <Button
+              className="md:hidden"
+              type="text"
+              icon={<MenuOutlined />}
+              onClick={() => setMobileSidebarOpen(true)}
+              style={{ color: '#666' }}
+              aria-label="Open navigation menu"
+              aria-expanded={mobileSidebarOpen}
+            />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <Typography.Title level={4} style={{ margin: 0 }}>
+                {menuItems.find(item => item.key === activeTab)?.label || 'Dashboard'}
+              </Typography.Title>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Badge
-                  status="processing"
-                  text="Admin Mode"
+                  status={activeConnections.length > 0 ? 'success' : 'warning'}
+                  text={`${activeConnections.length} connection${activeConnections.length !== 1 ? 's' : ''}`}
                 />
-              )}
+                {showAdminMenu && (
+                  <Badge
+                    status="processing"
+                    text="Admin Mode"
+                  />
+                )}
+              </div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -597,7 +662,6 @@ export default function Dashboard() {
               </div>
             </Dropdown>
           </div>
-        </div>
 
         {/* Content */}
         <div style={{ flex: 1, padding: '24px', overflow: 'auto' }}>
@@ -1521,6 +1585,10 @@ export default function Dashboard() {
           <SyncManagement />
         )}
 
+        {activeTab === 'sync-queue' && (
+          <SyncQueueViewer />
+        )}
+
         {activeTab === 'user-management' && isAdmin && session && (
           <UserManagement session={session} />
         )}
@@ -1567,10 +1635,6 @@ export default function Dashboard() {
               </Col>
             </Row>
           </div>
-        )}
-
-        {activeTab === 'monitoring' && isAdmin && session && (
-          <MonitoringDashboard session={session} />
         )}
 
         {activeTab === 'api-management' && isAdmin && (
@@ -2289,22 +2353,45 @@ export default function Dashboard() {
                 >
                   <Row gutter={16} style={{ marginBottom: '16px' }}>
                     <Col span={4}>
-                      <Statistic title="Total Syncs" value={0} prefix={<CloudSyncOutlined />} />
+                      <Statistic title="Total Syncs" value={syncLogs.length} prefix={<CloudSyncOutlined />} />
                     </Col>
                     <Col span={4}>
-                      <Statistic title="Successful" value={0} prefix={<DashboardOutlined />} />
+                      <Statistic
+                        title="Successful"
+                        value={syncLogs.filter(log => log.status === 'completed').length}
+                        prefix={<DashboardOutlined />}
+                      />
                     </Col>
                     <Col span={4}>
-                      <Statistic title="Failed" value={0} prefix={<MonitorOutlined />} />
+                      <Statistic
+                        title="Failed"
+                        value={syncLogs.filter(log => log.status === 'failed').length}
+                        prefix={<MonitorOutlined />}
+                      />
                     </Col>
                     <Col span={4}>
-                      <Statistic title="Partial" value={0} prefix={<SettingOutlined />} />
+                      <Statistic
+                        title="Partial"
+                        value={syncLogs.filter(log => log.status === 'partial_success').length}
+                        prefix={<SettingOutlined />}
+                      />
                     </Col>
                     <Col span={4}>
-                      <Statistic title="Items Synced" value={0} prefix={<DatabaseOutlined />} />
+                      <Statistic
+                        title="Items Synced"
+                        value={syncLogs.reduce((sum, log) => sum + (log.items_succeeded || 0), 0)}
+                        prefix={<DatabaseOutlined />}
+                      />
                     </Col>
                     <Col span={4}>
-                      <Statistic title="Avg Duration" value="—" prefix={<DashboardOutlined />} />
+                      <Statistic
+                        title="Avg Duration"
+                        value={syncLogs.length > 0
+                          ? `${Math.round(syncLogs.reduce((sum, log) => sum + (log.duration_seconds || 0), 0) / syncLogs.length)}s`
+                          : '—'
+                        }
+                        prefix={<DashboardOutlined />}
+                      />
                     </Col>
                   </Row>
                   <Table
@@ -2340,7 +2427,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {activeTab !== 'dashboard' && activeTab !== 'connections' && activeTab !== 'setup-wizard' && activeTab !== 'sync-profiles' && !activeTab.startsWith('admin') && activeTab !== 'products' && activeTab !== 'inventory' && activeTab !== 'orders' && activeTab !== 'mappings' && activeTab !== 'sync-scheduling' && activeTab !== 'sync-history' && (
+        {activeTab !== 'dashboard' && activeTab !== 'connections' && activeTab !== 'setup-wizard' && activeTab !== 'sync-profiles' && !activeTab.startsWith('admin') && activeTab !== 'products' && activeTab !== 'inventory' && activeTab !== 'orders' && activeTab !== 'mappings' && activeTab !== 'sync-scheduling' && activeTab !== 'sync-history' && activeTab !== 'sync-management' && activeTab !== 'sync-queue' && (
           <Card>
             <Typography.Title level={4} style={{ marginBottom: '16px' }}>
               {activeTab.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -2485,3 +2572,5 @@ export default function Dashboard() {
     </div>
   )
 }
+
+export default Dashboard

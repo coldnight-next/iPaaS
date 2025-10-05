@@ -16,7 +16,10 @@ import {
   Spin,
   Alert,
   Tooltip,
-  Progress
+  Progress,
+  Input,
+  Collapse,
+  Checkbox
 } from 'antd'
 import {
   SyncOutlined,
@@ -25,7 +28,10 @@ import {
   CloseCircleOutlined,
   ClockCircleOutlined,
   DollarOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  ClearOutlined
 } from '@ant-design/icons'
 import type { Session } from '@supabase/supabase-js'
 import dayjs, { Dayjs } from 'dayjs'
@@ -33,6 +39,8 @@ import dayjs, { Dayjs } from 'dayjs'
 const { Title, Text } = Typography
 const { RangePicker } = DatePicker
 const { Option } = Select
+const { Panel } = Collapse
+const { Search } = Input
 
 interface OrderSyncManagementProps {
   session: Session
@@ -64,6 +72,13 @@ const OrderSyncManagement: React.FC<OrderSyncManagementProps> = ({ session }) =>
   const [orderStatus, setOrderStatus] = useState<string>('all')
   const [fulfillmentStatus, setFulfillmentStatus] = useState<string>('all')
   const [limit, setLimit] = useState<number>(50)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [minAmount, setMinAmount] = useState<number | undefined>()
+  const [maxAmount, setMaxAmount] = useState<number | undefined>()
+  const [customerEmail, setCustomerEmail] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<string>('all')
+  const [hasMultipleItems, setHasMultipleItems] = useState<boolean | undefined>()
 
   // Stats
   const [stats, setStats] = useState({
@@ -101,6 +116,30 @@ const OrderSyncManagement: React.FC<OrderSyncManagementProps> = ({ session }) =>
 
       if (fulfillmentStatus !== 'all') {
         params.fulfillmentStatus = fulfillmentStatus
+      }
+
+      if (searchTerm) {
+        params.searchTerm = searchTerm
+      }
+
+      if (minAmount !== undefined) {
+        params.minAmount = minAmount
+      }
+
+      if (maxAmount !== undefined) {
+        params.maxAmount = maxAmount
+      }
+
+      if (customerEmail) {
+        params.customerEmail = customerEmail
+      }
+
+      if (syncStatus !== 'all') {
+        params.syncStatus = syncStatus
+      }
+
+      if (hasMultipleItems !== undefined) {
+        params.hasMultipleItems = hasMultipleItems
       }
 
       // Note: This would call your fetch-orders edge function
@@ -151,6 +190,13 @@ const OrderSyncManagement: React.FC<OrderSyncManagementProps> = ({ session }) =>
             dateFrom: dateRange?.[0].toISOString(),
             dateTo: dateRange?.[1].toISOString(),
             orderStatus: orderStatus !== 'all' ? orderStatus : undefined,
+            fulfillmentStatus: fulfillmentStatus !== 'all' ? fulfillmentStatus : undefined,
+            searchTerm: searchTerm || undefined,
+            minAmount,
+            maxAmount,
+            customerEmail: customerEmail || undefined,
+            syncStatus: syncStatus !== 'all' ? syncStatus : undefined,
+            hasMultipleItems,
             limit
           })
         }
@@ -351,72 +397,217 @@ const OrderSyncManagement: React.FC<OrderSyncManagementProps> = ({ session }) =>
         />
       )}
 
-      {/* Filters */}
-      <Card title="Filters" style={{ marginBottom: '16px' }}>
-        <Row gutter={16}>
-          <Col xs={24} md={8}>
-            <div style={{ marginBottom: '8px' }}>
-              <Text strong>Date Range</Text>
+      {/* Advanced Filters */}
+      <Card style={{ marginBottom: '16px' }}>
+        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+          <Search
+            placeholder="Search orders by number, customer name, or email..."
+            allowClear
+            style={{ width: 350 }}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onSearch={() => void fetchOrders()}
+            prefix={<SearchOutlined />}
+          />
+          <Button
+            icon={<FilterOutlined />}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            {showFilters ? 'Hide Filters' : 'Show Advanced Filters'}
+          </Button>
+          <Button
+            icon={<ClearOutlined />}
+            onClick={() => {
+              setSearchTerm('')
+              setDateRange([dayjs().subtract(7, 'days'), dayjs()])
+              setOrderStatus('all')
+              setFulfillmentStatus('all')
+              setMinAmount(undefined)
+              setMaxAmount(undefined)
+              setCustomerEmail('')
+              setSyncStatus('all')
+              setHasMultipleItems(undefined)
+              setLimit(50)
+            }}
+          >
+            Clear All
+          </Button>
+        </Space>
+
+        {showFilters && (
+          <Card size="small" style={{ backgroundColor: '#f9f9f9' }}>
+            <Collapse defaultActiveKey={['basic']} ghost>
+              <Panel header={<Text strong>Basic Filters</Text>} key="basic">
+                <Row gutter={16}>
+                  <Col xs={24} md={8}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Date Range</Text>
+                    </div>
+                    <RangePicker
+                      value={dateRange}
+                      onChange={(dates) => setDateRange(dates as [Dayjs, Dayjs] | null)}
+                      style={{ width: '100%' }}
+                      format="MMM D, YYYY"
+                    />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Customer Email</Text>
+                    </div>
+                    <Input
+                      placeholder="customer@example.com"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      allowClear
+                    />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Limit Results</Text>
+                    </div>
+                    <InputNumber
+                      value={limit}
+                      onChange={(val) => setLimit(val || 50)}
+                      min={1}
+                      max={500}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                </Row>
+              </Panel>
+
+              <Panel header={<Text strong>Order Status & Value</Text>} key="status">
+                <Row gutter={16}>
+                  <Col xs={24} md={6}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Financial Status</Text>
+                    </div>
+                    <Select
+                      value={orderStatus}
+                      onChange={setOrderStatus}
+                      style={{ width: '100%' }}
+                    >
+                      <Option value="all">All Statuses</Option>
+                      <Option value="paid">Paid</Option>
+                      <Option value="pending">Pending</Option>
+                      <Option value="refunded">Refunded</Option>
+                      <Option value="partially_refunded">Partially Refunded</Option>
+                      <Option value="voided">Voided</Option>
+                    </Select>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Fulfillment Status</Text>
+                    </div>
+                    <Select
+                      value={fulfillmentStatus}
+                      onChange={setFulfillmentStatus}
+                      style={{ width: '100%' }}
+                    >
+                      <Option value="all">All Statuses</Option>
+                      <Option value="fulfilled">Fulfilled</Option>
+                      <Option value="unfulfilled">Unfulfilled</Option>
+                      <Option value="partial">Partially Fulfilled</Option>
+                    </Select>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Sync Status</Text>
+                    </div>
+                    <Select
+                      value={syncStatus}
+                      onChange={setSyncStatus}
+                      style={{ width: '100%' }}
+                    >
+                      <Option value="all">All Sync Statuses</Option>
+                      <Option value="synced">Synced</Option>
+                      <Option value="pending">Pending Sync</Option>
+                      <Option value="failed">Sync Failed</Option>
+                    </Select>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Order Size</Text>
+                    </div>
+                    <Select
+                      value={hasMultipleItems === undefined ? 'all' : hasMultipleItems ? 'multiple' : 'single'}
+                      onChange={(value) => setHasMultipleItems(value === 'all' ? undefined : value === 'multiple')}
+                      style={{ width: '100%' }}
+                    >
+                      <Option value="all">All Orders</Option>
+                      <Option value="single">Single Item Orders</Option>
+                      <Option value="multiple">Multi-Item Orders</Option>
+                    </Select>
+                  </Col>
+                </Row>
+                <Row gutter={16} style={{ marginTop: 16 }}>
+                  <Col xs={24} md={12}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>Order Value Range</Text>
+                    </div>
+                    <Space>
+                      <InputNumber
+                        placeholder="Min"
+                        prefix="$"
+                        value={minAmount}
+                        onChange={setMinAmount}
+                        min={0}
+                        step={10}
+                        style={{ width: '140px' }}
+                      />
+                      <Text>to</Text>
+                      <InputNumber
+                        placeholder="Max"
+                        prefix="$"
+                        value={maxAmount}
+                        onChange={setMaxAmount}
+                        min={0}
+                        step={10}
+                        style={{ width: '140px' }}
+                      />
+                    </Space>
+                  </Col>
+                </Row>
+              </Panel>
+            </Collapse>
+
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #e8e8e8' }}>
+              <Space>
+                <Button
+                  type="primary"
+                  onClick={() => void fetchOrders()}
+                  loading={loading}
+                  icon={<SearchOutlined />}
+                >
+                  Apply Filters
+                </Button>
+                <Text type="secondary">
+                  {[
+                    searchTerm && 'Search',
+                    dateRange && 'Date Range',
+                    orderStatus !== 'all' && 'Financial Status',
+                    fulfillmentStatus !== 'all' && 'Fulfillment Status',
+                    syncStatus !== 'all' && 'Sync Status',
+                    (minAmount !== undefined || maxAmount !== undefined) && 'Order Value',
+                    customerEmail && 'Customer Email',
+                    hasMultipleItems !== undefined && 'Order Size'
+                  ].filter(Boolean).length > 0 &&
+                    `${[
+                      searchTerm && 'Search',
+                      dateRange && 'Date Range',
+                      orderStatus !== 'all' && 'Financial Status',
+                      fulfillmentStatus !== 'all' && 'Fulfillment Status',
+                      syncStatus !== 'all' && 'Sync Status',
+                      (minAmount !== undefined || maxAmount !== undefined) && 'Order Value',
+                      customerEmail && 'Customer Email',
+                      hasMultipleItems !== undefined && 'Order Size'
+                    ].filter(Boolean).length} filter(s) active`
+                  }
+                </Text>
+              </Space>
             </div>
-            <RangePicker
-              value={dateRange}
-              onChange={(dates) => setDateRange(dates as [Dayjs, Dayjs] | null)}
-              style={{ width: '100%' }}
-              format="MMM D, YYYY"
-            />
-          </Col>
-          <Col xs={24} md={6}>
-            <div style={{ marginBottom: '8px' }}>
-              <Text strong>Financial Status</Text>
-            </div>
-            <Select
-              value={orderStatus}
-              onChange={setOrderStatus}
-              style={{ width: '100%' }}
-            >
-              <Option value="all">All Statuses</Option>
-              <Option value="paid">Paid</Option>
-              <Option value="pending">Pending</Option>
-              <Option value="refunded">Refunded</Option>
-              <Option value="partially_refunded">Partially Refunded</Option>
-            </Select>
-          </Col>
-          <Col xs={24} md={6}>
-            <div style={{ marginBottom: '8px' }}>
-              <Text strong>Fulfillment Status</Text>
-            </div>
-            <Select
-              value={fulfillmentStatus}
-              onChange={setFulfillmentStatus}
-              style={{ width: '100%' }}
-            >
-              <Option value="all">All Statuses</Option>
-              <Option value="fulfilled">Fulfilled</Option>
-              <Option value="unfulfilled">Unfulfilled</Option>
-              <Option value="partial">Partially Fulfilled</Option>
-            </Select>
-          </Col>
-          <Col xs={24} md={4}>
-            <div style={{ marginBottom: '8px' }}>
-              <Text strong>Limit</Text>
-            </div>
-            <InputNumber
-              value={limit}
-              onChange={(val) => setLimit(val || 50)}
-              min={1}
-              max={250}
-              style={{ width: '100%' }}
-            />
-          </Col>
-        </Row>
-        <Button
-          type="primary"
-          onClick={() => void fetchOrders()}
-          loading={loading}
-          style={{ marginTop: '16px' }}
-        >
-          Apply Filters
-        </Button>
+          </Card>
+        )}
       </Card>
 
       {/* Orders Table */}

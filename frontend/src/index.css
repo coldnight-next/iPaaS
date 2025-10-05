@@ -296,7 +296,69 @@ body {
   background-color: #f9fafb;
 }
 
-/* Responsive design */
+/* Mobile-first responsive design */
+@media (max-width: 640px) {
+  .container {
+    padding: 0 0.5rem;
+  }
+
+  .card {
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Mobile sidebar */
+  .mobile-sidebar-hidden {
+    display: none !important;
+  }
+
+  .mobile-sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+  }
+
+  /* Mobile table adjustments */
+  .ant-table-wrapper {
+    font-size: 12px;
+  }
+
+  .ant-table-thead > tr > th {
+    padding: 8px 4px;
+    font-size: 11px;
+  }
+
+  .ant-table-tbody > tr > td {
+    padding: 8px 4px;
+    font-size: 11px;
+  }
+
+  /* Mobile button adjustments */
+  .ant-btn {
+    font-size: 12px;
+    padding: 4px 8px;
+    height: 28px;
+  }
+
+  /* Mobile card adjustments */
+  .ant-card-body {
+    padding: 12px;
+  }
+
+  /* Mobile statistic adjustments */
+  .ant-statistic-title {
+    font-size: 11px;
+  }
+
+  .ant-statistic-content {
+    font-size: 14px;
+  }
+}
+
 @media (min-width: 768px) {
   .md\:grid-cols-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -305,10 +367,66 @@ body {
   .md\:grid-cols-4 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .md\:flex {
+    display: flex;
+  }
+
+  .md\:hidden {
+    display: none;
+  }
+
+  .md\:block {
+    display: block;
+  }
 }
 
 @media (min-width: 1024px) {
   .lg\:grid-cols-4 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .lg\:flex {
+    display: flex;
+  }
+
+  .lg\:hidden {
+    display: none;
+  }
+}
+
+/* Touch-friendly interactions */
+@media (hover: none) and (pointer: coarse) {
+  .btn, .ant-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .cursor-pointer {
+    cursor: default;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .border {
+    border-width: 2px;
+  }
+
+  .text-gray-500 {
+    color: #000;
+  }
+
+  .text-gray-700 {
+    color: #000;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -6,10 +6,11 @@ import {
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, LinkOutlined,
   CodeOutlined, ThunderboltOutlined, TableOutlined, CheckCircleOutlined,
-  WarningOutlined, SyncOutlined, SettingOutlined
+  WarningOutlined, SyncOutlined, SettingOutlined, DragOutlined
 } from '@ant-design/icons'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import VisualFieldMapper from './VisualFieldMapper'
 
 const { Title, Text, Paragraph } = Typography
 const { TextArea } = Input
@@ -467,14 +468,54 @@ export default function FieldMappingManager({ session }: FieldMappingManagerProp
       </Paragraph>
 
       <Alert
-        message="Custom Field Mapping"
-        description="Configure how data fields are mapped and transformed between platforms. You can apply transformations, set default values, and define validation rules."
+        message="Enhanced Field Mapping"
+        description="Configure field mappings using our traditional table interface or the new visual drag-and-drop designer. Apply transformations, set default values, and define validation rules."
         type="info"
         showIcon
         style={{ marginBottom: 24 }}
       />
 
-      <Row gutter={[16, 16]}>
+      <Tabs defaultActiveKey="visual" type="card" style={{ marginBottom: 24 }}>
+        <TabPane
+          tab={
+            <span>
+              <DragOutlined />
+              Visual Mapping
+            </span>
+          }
+          key="visual"
+        >
+          {selectedTemplate ? (
+            <VisualFieldMapper
+              templateId={selectedTemplate.id}
+              onMappingsChange={(mappings) => {
+                // Handle mappings change from visual interface
+                console.log('Visual mappings updated:', mappings)
+              }}
+            />
+          ) : (
+            <Card>
+              <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                <DragOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
+                <Title level={4} style={{ marginTop: 16 }}>Select a Template</Title>
+                <Paragraph type="secondary">
+                  Choose a mapping template from the sidebar to start visual mapping.
+                </Paragraph>
+              </div>
+            </Card>
+          )}
+        </TabPane>
+
+        <TabPane
+          tab={
+            <span>
+              <TableOutlined />
+              Table View
+            </span>
+          }
+          key="table"
+        >
+          <Row gutter={[16, 16]}>
         <Col xs={24} lg={8}>
           <Card
             title="Mapping Templates"
@@ -562,6 +603,8 @@ export default function FieldMappingManager({ session }: FieldMappingManagerProp
           )}
         </Col>
       </Row>
+        </TabPane>
+      </Tabs>
 
       {/* Template Modal */}
       <Modal

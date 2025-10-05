@@ -7,13 +7,38 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
+        manualChunks: (id) => {
           // Vendor chunks
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': ['antd', '@ant-design/icons', '@ant-design/pro-components'],
-          'supabase-vendor': ['@supabase/supabase-js'],
-          // Large utility libraries
-          'utils': ['dayjs'],
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+              return 'react-vendor'
+            }
+            if (id.includes('antd') || id.includes('@ant-design')) {
+              return 'ui-vendor'
+            }
+            if (id.includes('@supabase') || id.includes('supabase')) {
+              return 'supabase-vendor'
+            }
+            if (id.includes('dayjs') || id.includes('date-fns')) {
+              return 'date-utils'
+            }
+            if (id.includes('recharts') || id.includes('chart')) {
+              return 'charts'
+            }
+            // Other large libraries
+            return 'vendor'
+          }
+
+          // Application chunks
+          if (id.includes('/src/pages/')) {
+            return 'pages'
+          }
+          if (id.includes('/src/components/')) {
+            return 'components'
+          }
+          if (id.includes('/src/contexts/') || id.includes('/src/hooks/')) {
+            return 'app-core'
+          }
         },
         // Optimize chunk file names
         chunkFileNames: 'assets/[name]-[hash].js',
@@ -22,7 +47,7 @@ export default defineConfig({
       }
     },
     // Optimize chunk size
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 800,
     // Enable source maps for production debugging
     sourcemap: false,
     // Minify for better performance
