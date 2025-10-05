@@ -1,316 +1,456 @@
+// Monitoring Service
+// Collects performance metrics, system health data, and provides alerting capabilities
+
 import { createSupabaseClient } from './supabaseClient.ts'
 
-export interface AlertData {
+export interface SystemMetrics {
+  timestamp: Date
   userId: string
-  alertType: 'sync_failure' | 'api_rate_limit' | 'connection_error' | 'performance_degradation' | 'system_error'
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
-  title: string
+  syncLogId?: string
+  metricType: 'performance' | 'error' | 'api_usage' | 'system_health'
+  metricName: string
+  value: number
+  unit: string
+  metadata?: Record<string, any>
+}
+
+export interface AlertRule {
+  id: string
+  userId: string
+  name: string
+  description: string
+  metricName: string
+  condition: 'greater_than' | 'less_than' | 'equals' | 'not_equals'
+  threshold: number
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  enabled: boolean
+  notificationChannels: ('email' | 'slack' | 'webhook')[]
+  cooldownMinutes: number
+  lastTriggered?: Date
+}
+
+export interface Alert {
+  id: string
+  alertRuleId: string
+  userId: string
   message: string
-  source?: string
-  metadata?: Record<string, any>
-}
-
-export interface QueueItem {
-  userId: string
-  syncType: 'manual' | 'scheduled' | 'webhook' | 'bulk'
-  direction: 'netsuite_to_shopify' | 'shopify_to_netsuite' | 'bidirectional'
-  priority?: number
-  estimatedItems?: number
-  metadata?: Record<string, any>
-}
-
-export interface SessionData {
-  userId: string
-  syncLogId: string
-  syncType: string
-  direction: string
-  totalItems: number
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  status: 'active' | 'acknowledged' | 'resolved'
+  triggeredAt: Date
+  resolvedAt?: Date
   metadata?: Record<string, any>
 }
 
 export class MonitoringService {
   private supabase = createSupabaseClient()
 
-  // Alert Management
-  async createAlert(alertData: AlertData): Promise<string> {
-    const { data, error } = await this.supabase
-      .from('system_alerts')
-      .insert([{
-        user_id: alertData.userId,
-        alert_type: alertData.alertType,
-        severity: alertData.severity,
-        title: alertData.title,
-        message: alertData.message,
-        source: alertData.source,
-        metadata: alertData.metadata || {}
-      }])
-      .select('id')
-      .single()
-
-    if (error) throw error
-    return data.id
-  }
-
-  async acknowledgeAlert(alertId: string, userId: string): Promise<void> {
-    const { error } = await this.supabase
-      .from('system_alerts')
-      .update({
-        is_acknowledged: true,
-        acknowledged_at: new Date().toISOString(),
-        acknowledged_by: userId
+  // Record performance metrics
+  async recordMetric(metric: Omit<SystemMetrics, 'timestamp'>): Promise<void> {
+    try {
+      await this.supabase.from('system_metrics').insert({
+        ...metric,
+        timestamp: new Date().toISOString()
       })
-      .eq('id', alertId)
-
-    if (error) throw error
+    } catch (error) {
+      console.error('[Monitoring] Failed to record metric:', error)
+    }
   }
 
-  async resolveAlert(alertId: string, userId: string): Promise<void> {
-    const { error } = await this.supabase
-      .from('system_alerts')
-      .update({
-        is_resolved: true,
-        resolved_at: new Date().toISOString(),
-        resolved_by: userId
-      })
-      .eq('id', alertId)
-
-    if (error) throw error
-  }
-
-  // Queue Management
-  async addToQueue(queueData: QueueItem): Promise<string> {
-    const { data, error } = await this.supabase
-      .from('sync_queue')
-      .insert([{
-        user_id: queueData.userId,
-        sync_type: queueData.syncType,
-        direction: queueData.direction,
-        priority: queueData.priority || 1,
-        estimated_items: queueData.estimatedItems || 0,
-        metadata: queueData.metadata || {}
-      }])
-      .select('id')
-      .single()
-
-    if (error) throw error
-    return data.id
-  }
-
-  async updateQueueStatus(
-    queueId: string,
-    status: 'queued' | 'processing' | 'paused' | 'completed' | 'failed',
-    updates: {
-      processedItems?: number
-      failedItems?: number
-      currentOperation?: string
-      errorMessage?: string
-    } = {}
-  ): Promise<void> {
-    const updateData: any = {
-      status,
-      updated_at: new Date().toISOString()
-    }
-
-    if (status === 'processing' && !updates.processedItems) {
-      updateData.started_at = new Date().toISOString()
-    }
-
-    if (status === 'completed' || status === 'failed') {
-      updateData.completed_at = new Date().toISOString()
-    }
-
-    if (updates.processedItems !== undefined) {
-      updateData.processed_items = updates.processedItems
-      const estimated = await this.getQueueItem(queueId).then(item => item?.estimated_items || 0)
-      updateData.progress_percentage = estimated > 0 ? (updates.processedItems / estimated) * 100 : 0
-    }
-
-    if (updates.failedItems !== undefined) {
-      updateData.failed_items = updates.failedItems
-    }
-
-    if (updates.currentOperation) {
-      updateData.current_operation = updates.currentOperation
-    }
-
-    if (updates.errorMessage) {
-      updateData.error_message = updates.errorMessage
-    }
-
-    const { error } = await this.supabase
-      .from('sync_queue')
-      .update(updateData)
-      .eq('id', queueId)
-
-    if (error) throw error
-  }
-
-  async getQueueItem(queueId: string) {
-    const { data, error } = await this.supabase
-      .from('sync_queue')
-      .select('*')
-      .eq('id', queueId)
-      .single()
-
-    if (error) throw error
-    return data
-  }
-
-  // Active Session Management
-  async startSession(sessionData: SessionData): Promise<string> {
-    const { data, error } = await this.supabase
-      .from('active_sync_sessions')
-      .insert([{
-        user_id: sessionData.userId,
-        sync_log_id: sessionData.syncLogId,
-        sync_type: sessionData.syncType,
-        direction: sessionData.direction,
-        total_items: sessionData.totalItems,
-        status: 'running',
-        metadata: sessionData.metadata || {}
-      }])
-      .select('id')
-      .single()
-
-    if (error) throw error
-    return data.id
-  }
-
-  async updateSession(
-    sessionId: string,
-    updates: {
-      processedItems?: number
-      currentItemSku?: string
-      itemsPerSecond?: number
-      elapsedSeconds?: number
-      estimatedRemainingSeconds?: number
-      status?: 'running' | 'paused' | 'completed' | 'failed'
+  // Record sync performance metrics
+  async recordSyncMetrics(
+    userId: string,
+    syncLogId: string,
+    metrics: {
+      duration: number
+      itemsProcessed: number
+      itemsSucceeded: number
+      itemsFailed: number
+      apiCalls: number
+      errors: string[]
     }
   ): Promise<void> {
-    const updateData: any = {
-      last_updated: new Date().toISOString()
+    const metricsToRecord: Omit<SystemMetrics, 'timestamp'>[] = [
+      {
+        userId,
+        syncLogId,
+        metricType: 'performance',
+        metricName: 'sync_duration_seconds',
+        value: metrics.duration,
+        unit: 'seconds',
+        metadata: { syncLogId }
+      },
+      {
+        userId,
+        syncLogId,
+        metricType: 'performance',
+        metricName: 'sync_items_processed',
+        value: metrics.itemsProcessed,
+        unit: 'count',
+        metadata: { syncLogId }
+      },
+      {
+        userId,
+        syncLogId,
+        metricType: 'performance',
+        metricName: 'sync_success_rate',
+        value: metrics.itemsProcessed > 0 ? (metrics.itemsSucceeded / metrics.itemsProcessed) * 100 : 0,
+        unit: 'percentage',
+        metadata: { syncLogId }
+      },
+      {
+        userId,
+        syncLogId,
+        metricType: 'api_usage',
+        metricName: 'api_calls_made',
+        value: metrics.apiCalls,
+        unit: 'count',
+        metadata: { syncLogId }
+      }
+    ]
+
+    // Record error metrics
+    if (metrics.errors.length > 0) {
+      metricsToRecord.push({
+        userId,
+        syncLogId,
+        metricType: 'error',
+        metricName: 'sync_errors_count',
+        value: metrics.errors.length,
+        unit: 'count',
+        metadata: { syncLogId, errors: metrics.errors }
+      })
     }
 
-    if (updates.processedItems !== undefined) {
-      updateData.processed_items = updates.processedItems
-    }
-
-    if (updates.currentItemSku) {
-      updateData.current_item_sku = updates.currentItemSku
-    }
-
-    if (updates.itemsPerSecond !== undefined) {
-      updateData.items_per_second = updates.itemsPerSecond
-    }
-
-    if (updates.elapsedSeconds !== undefined) {
-      updateData.elapsed_seconds = updates.elapsedSeconds
-    }
-
-    if (updates.estimatedRemainingSeconds !== undefined) {
-      updateData.estimated_remaining_seconds = updates.estimatedRemainingSeconds
-    }
-
-    if (updates.status) {
-      updateData.status = updates.status
-    }
-
-    const { error } = await this.supabase
-      .from('active_sync_sessions')
-      .update(updateData)
-      .eq('id', sessionId)
-
-    if (error) throw error
+    // Record all metrics
+    await Promise.all(metricsToRecord.map(metric => this.recordMetric(metric)))
   }
 
-  async endSession(sessionId: string): Promise<void> {
-    const { error } = await this.supabase
-      .from('active_sync_sessions')
-      .delete()
-      .eq('id', sessionId)
-
-    if (error) throw error
-  }
-
-  // Performance Metrics
-  async recordPerformanceMetrics(userId: string): Promise<void> {
-    const now = new Date()
-    const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours())
-    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const weekStart = new Date(dayStart.getTime() - (dayStart.getDay() * 24 * 60 * 60 * 1000))
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-
-    // Create performance stats for different periods
-    await this.supabase.rpc('create_performance_stats', {
-      p_user_id: userId,
-      p_period_start: hourStart.toISOString(),
-      p_period_end: now.toISOString(),
-      p_time_period: 'hour'
-    })
-
-    await this.supabase.rpc('create_performance_stats', {
-      p_user_id: userId,
-      p_period_start: dayStart.toISOString(),
-      p_period_end: now.toISOString(),
-      p_time_period: 'day'
-    })
-
-    await this.supabase.rpc('create_performance_stats', {
-      p_user_id: userId,
-      p_period_start: weekStart.toISOString(),
-      p_period_end: now.toISOString(),
-      p_time_period: 'week'
-    })
-
-    await this.supabase.rpc('create_performance_stats', {
-      p_user_id: userId,
-      p_period_start: monthStart.toISOString(),
-      p_period_end: now.toISOString(),
-      p_time_period: 'month'
+  // Record API usage metrics
+  async recordApiUsage(
+    userId: string,
+    platform: 'netsuite' | 'shopify',
+    operation: string,
+    responseTime: number,
+    success: boolean,
+    errorMessage?: string
+  ): Promise<void> {
+    await this.recordMetric({
+      userId,
+      metricType: 'api_usage',
+      metricName: `${platform}_api_${operation}`,
+      value: responseTime,
+      unit: 'milliseconds',
+      metadata: {
+        platform,
+        operation,
+        success,
+        errorMessage
+      }
     })
   }
 
-  // Alert Triggers
-  async checkAndCreateAlerts(userId: string): Promise<void> {
-    // Check for high error rates
-    const { data: recentStats } = await this.supabase
-      .from('sync_performance_stats')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('time_period', 'hour')
-      .order('period_start', { ascending: false })
+  // Check alert rules and trigger alerts
+  async checkAlerts(userId: string): Promise<void> {
+    const alertRules = await this.getActiveAlertRules(userId)
+
+    for (const rule of alertRules) {
+      try {
+        const shouldTrigger = await this.evaluateAlertRule(rule)
+
+        if (shouldTrigger) {
+          await this.triggerAlert(rule)
+        }
+      } catch (error) {
+        console.error(`[Monitoring] Error checking alert rule ${rule.id}:`, error)
+      }
+    }
+  }
+
+  // Evaluate if an alert rule should trigger
+  private async evaluateAlertRule(rule: AlertRule): Promise<boolean> {
+    // Check cooldown period
+    if (rule.lastTriggered) {
+      const cooldownEnd = new Date(rule.lastTriggered.getTime() + rule.cooldownMinutes * 60 * 1000)
+      if (new Date() < cooldownEnd) {
+        return false // Still in cooldown
+      }
+    }
+
+    // Get recent metrics for this rule
+    const { data: metrics } = await this.supabase
+      .from('system_metrics')
+      .select('value')
+      .eq('user_id', rule.userId)
+      .eq('metric_name', rule.metricName)
+      .gte('timestamp', new Date(Date.now() - 5 * 60 * 1000).toISOString()) // Last 5 minutes
+      .order('timestamp', { ascending: false })
       .limit(1)
+
+    if (!metrics || metrics.length === 0) {
+      return false
+    }
+
+    const currentValue = metrics[0].value
+
+    // Evaluate condition
+    switch (rule.condition) {
+      case 'greater_than':
+        return currentValue > rule.threshold
+      case 'less_than':
+        return currentValue < rule.threshold
+      case 'equals':
+        return currentValue === rule.threshold
+      case 'not_equals':
+        return currentValue !== rule.threshold
+      default:
+        return false
+    }
+  }
+
+  // Trigger an alert
+  private async triggerAlert(rule: AlertRule): Promise<void> {
+    const alert: Omit<Alert, 'id'> = {
+      alertRuleId: rule.id,
+      userId: rule.userId,
+      message: `${rule.name}: ${rule.metricName} is ${rule.condition.replace('_', ' ')} ${rule.threshold}`,
+      severity: rule.severity,
+      status: 'active',
+      triggeredAt: new Date(),
+      metadata: {
+        metricName: rule.metricName,
+        condition: rule.condition,
+        threshold: rule.threshold
+      }
+    }
+
+    // Create alert record
+    const { data: alertRecord } = await this.supabase
+      .from('alerts')
+      .insert(alert)
+      .select()
       .single()
 
-    if (recentStats && recentStats.error_rate_percentage > 50) {
-      await this.createAlert({
-        userId,
-        alertType: 'performance_degradation',
-        severity: 'high',
-        title: 'High Error Rate Detected',
-        message: `Error rate is ${recentStats.error_rate_percentage.toFixed(1)}% in the last hour`,
-        source: 'performance_monitor'
-      })
+    if (alertRecord) {
+      // Send notifications
+      await this.sendAlertNotifications(rule, alertRecord)
+
+      // Update last triggered timestamp
+      await this.supabase
+        .from('alert_rules')
+        .update({ last_triggered: new Date().toISOString() })
+        .eq('id', rule.id)
+    }
+  }
+
+  // Send alert notifications
+  private async sendAlertNotifications(rule: AlertRule, alert: Alert): Promise<void> {
+    const notificationPromises: Promise<void>[] = []
+
+    if (rule.notificationChannels.includes('email')) {
+      notificationPromises.push(this.sendEmailAlert(rule, alert))
     }
 
-    // Check for failed syncs
-    const { data: recentLogs } = await this.supabase
-      .from('sync_logs')
+    if (rule.notificationChannels.includes('slack')) {
+      notificationPromises.push(this.sendSlackAlert(rule, alert))
+    }
+
+    if (rule.notificationChannels.includes('webhook')) {
+      notificationPromises.push(this.sendWebhookAlert(rule, alert))
+    }
+
+    await Promise.all(notificationPromises)
+  }
+
+  // Send email alert
+  private async sendEmailAlert(rule: AlertRule, alert: Alert): Promise<void> {
+    try {
+      // Get user's email from auth
+      const { data: user } = await this.supabase.auth.admin.getUserById(rule.userId)
+
+      if (user?.email) {
+        await this.supabase.functions.invoke('send-notification', {
+          body: {
+            type: 'email',
+            recipient: user.email,
+            subject: `Alert: ${rule.name}`,
+            message: alert.message,
+            metadata: {
+              alertId: alert.id,
+              severity: alert.severity,
+              ruleId: rule.id
+            }
+          }
+        })
+      }
+    } catch (error) {
+      console.error('[Monitoring] Failed to send email alert:', error)
+    }
+  }
+
+  // Send Slack alert
+  private async sendSlackAlert(rule: AlertRule, alert: Alert): Promise<void> {
+    try {
+      // Get user's Slack webhook from settings
+      const { data: settings } = await this.supabase
+        .from('sync_configurations')
+        .select('config_value')
+        .eq('user_id', rule.userId)
+        .eq('config_key', 'notification_settings')
+        .single()
+
+      const slackWebhook = settings?.config_value?.slackWebhook
+
+      if (slackWebhook) {
+        await this.supabase.functions.invoke('send-notification', {
+          body: {
+            type: 'slack',
+            recipient: slackWebhook,
+            subject: `Alert: ${rule.name}`,
+            message: alert.message,
+            metadata: {
+              alertId: alert.id,
+              severity: alert.severity,
+              ruleId: rule.id
+            }
+          }
+        })
+      }
+    } catch (error) {
+      console.error('[Monitoring] Failed to send Slack alert:', error)
+    }
+  }
+
+  // Send webhook alert
+  private async sendWebhookAlert(rule: AlertRule, alert: Alert): Promise<void> {
+    try {
+      // Get user's webhook URL from settings
+      const { data: settings } = await this.supabase
+        .from('sync_configurations')
+        .select('config_value')
+        .eq('user_id', rule.userId)
+        .eq('config_key', 'notification_settings')
+        .single()
+
+      const webhookUrl = settings?.config_value?.webhookUrl
+
+      if (webhookUrl) {
+        await this.supabase.functions.invoke('send-notification', {
+          body: {
+            type: 'webhook',
+            recipient: webhookUrl,
+            subject: `Alert: ${rule.name}`,
+            message: alert.message,
+            metadata: {
+              alertId: alert.id,
+              severity: alert.severity,
+              ruleId: rule.id
+            }
+          }
+        })
+      }
+    } catch (error) {
+      console.error('[Monitoring] Failed to send webhook alert:', error)
+    }
+  }
+
+  // Get active alert rules for a user
+  async getActiveAlertRules(userId: string): Promise<AlertRule[]> {
+    const { data, error } = await this.supabase
+      .from('alert_rules')
       .select('*')
       .eq('user_id', userId)
-      .eq('status', 'failed')
-      .gte('started_at', new Date(Date.now() - 60 * 60 * 1000).toISOString()) // Last hour
+      .eq('enabled', true)
 
-    if (recentLogs && recentLogs.length >= 3) {
-      await this.createAlert({
-        userId,
-        alertType: 'sync_failure',
-        severity: 'critical',
-        title: 'Multiple Sync Failures',
-        message: `${recentLogs.length} sync operations failed in the last hour`,
-        source: 'sync_monitor'
-      })
+    if (error) {
+      console.error('[Monitoring] Failed to get alert rules:', error)
+      return []
     }
+
+    return (data || []).map(rule => ({
+      ...rule,
+      lastTriggered: rule.last_triggered ? new Date(rule.last_triggered) : undefined
+    }))
+  }
+
+  // Create an alert rule
+  async createAlertRule(rule: Omit<AlertRule, 'id'>): Promise<AlertRule | null> {
+    const { data, error } = await this.supabase
+      .from('alert_rules')
+      .insert(rule)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[Monitoring] Failed to create alert rule:', error)
+      return null
+    }
+
+    return {
+      ...data,
+      lastTriggered: data.last_triggered ? new Date(data.last_triggered) : undefined
+    }
+  }
+
+  // Get system health metrics
+  async getSystemHealth(userId: string): Promise<{
+    syncSuccessRate: number
+    averageSyncDuration: number
+    errorRate: number
+    apiResponseTime: number
+    activeAlerts: number
+  }> {
+    // Get metrics from the last 24 hours
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+    const { data: metrics } = await this.supabase
+      .from('system_metrics')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('timestamp', since)
+
+    const { data: alerts } = await this.supabase
+      .from('alerts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+
+    // Calculate health metrics
+    const syncMetrics = metrics?.filter(m => m.metric_name.includes('sync_')) || []
+    const errorMetrics = metrics?.filter(m => m.metric_name.includes('error')) || []
+    const apiMetrics = metrics?.filter(m => m.metric_name.includes('api_')) || []
+
+    const syncSuccessRate = syncMetrics.find(m => m.metric_name === 'sync_success_rate')?.value || 0
+    const averageSyncDuration = syncMetrics
+      .filter(m => m.metric_name === 'sync_duration_seconds')
+      .reduce((sum, m) => sum + m.value, 0) / Math.max(syncMetrics.filter(m => m.metric_name === 'sync_duration_seconds').length, 1)
+
+    const errorRate = errorMetrics.length > 0 ?
+      errorMetrics.reduce((sum, m) => sum + m.value, 0) / errorMetrics.length : 0
+
+    const apiResponseTime = apiMetrics.length > 0 ?
+      apiMetrics.reduce((sum, m) => sum + m.value, 0) / apiMetrics.length : 0
+
+    return {
+      syncSuccessRate,
+      averageSyncDuration,
+      errorRate,
+      apiResponseTime,
+      activeAlerts: alerts?.length || 0
+    }
+  }
+
+  // Acknowledge an alert
+  async acknowledgeAlert(alertId: string, userId: string): Promise<boolean> {
+    const { error } = await this.supabase
+      .from('alerts')
+      .update({
+        status: 'acknowledged',
+        resolved_at: new Date().toISOString()
+      })
+      .eq('id', alertId)
+      .eq('user_id', userId)
+
+    return !error
   }
 }
 

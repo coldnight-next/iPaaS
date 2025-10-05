@@ -190,16 +190,8 @@ serve(async req => {
       shopifyClient
     }
 
-    // Start monitoring session
-    const sessionId = await monitoringService.startSession({
-      userId: auth.user.id,
-      syncLogId: syncLog.id,
-      syncType: profile.syncDirection,
-      direction: profile.syncDirection,
-      totalItems: 0 // Will be updated as we process
-    })
-
     // Execute sync based on profile
+    let apiCalls = 0
     try {
       if (profile.dataTypes.products) {
         const productService = new ProductSyncService(syncContext)
@@ -208,6 +200,7 @@ serve(async req => {
         result.itemsSucceeded += productResult.succeeded
         result.itemsFailed += productResult.failed
         result.errors.push(...productResult.errors)
+        apiCalls += Math.ceil(productResult.processed / 100) // Estimate API calls
       }
 
       if (profile.dataTypes.inventory) {
@@ -217,6 +210,7 @@ serve(async req => {
         result.itemsSucceeded += inventoryResult.succeeded
         result.itemsFailed += inventoryResult.failed
         result.errors.push(...inventoryResult.errors)
+        apiCalls += Math.ceil(inventoryResult.processed / 50) // Estimate API calls
       }
 
       if (profile.dataTypes.orders) {
@@ -226,6 +220,7 @@ serve(async req => {
         result.itemsSucceeded += orderResult.succeeded
         result.itemsFailed += orderResult.failed
         result.errors.push(...orderResult.errors)
+        apiCalls += Math.ceil(orderResult.processed / 25) // Estimate API calls
       }
 
       result.status = result.itemsFailed === 0 ? 'completed' : result.itemsSucceeded > 0 ? 'partial_success' : 'failed'
@@ -233,34 +228,21 @@ serve(async req => {
       console.error('[sync] Sync execution error', error)
       result.status = 'failed'
       result.errors.push(error instanceof Error ? error.message : 'Unknown sync error')
-
-      // Create alert for sync failure
-      await monitoringService.createAlert({
-        userId: auth.user.id,
-        alertType: 'sync_failure',
-        severity: 'high',
-        title: 'Sync Operation Failed',
-        message: `Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        source: 'sync_engine'
-      })
     }
 
     result.duration = Date.now() - startTime
 
-    // Collect performance metrics
-    const metrics = {
-      totalDuration: result.duration,
-      itemsPerSecond: result.itemsProcessed / (result.duration / 1000),
-      successRate: result.itemsProcessed > 0 ? (result.itemsSucceeded / result.itemsProcessed) * 100 : 0,
-      errorRate: result.itemsProcessed > 0 ? (result.itemsFailed / result.itemsProcessed) * 100 : 0,
-      profile: profile.name,
-      direction: profile.syncDirection,
-      dataTypes: Object.keys(profile.dataTypes).filter(key => profile.dataTypes[key as keyof typeof profile.dataTypes])
-    }
+    // Record sync performance metrics
+    await monitoringService.recordSyncMetrics(auth.user.id, syncLog.id, {
+      duration: result.duration,
+      itemsProcessed: result.itemsProcessed,
+      itemsSucceeded: result.itemsSucceeded,
+      itemsFailed: result.itemsFailed,
+      apiCalls,
+      errors: result.errors
+    })
 
-    console.log('[sync] Performance metrics:', metrics)
-
-    // Update sync log with metrics
+    // Update sync log
     await supabase
       .from('sync_logs')
       .update({
@@ -270,24 +252,39 @@ serve(async req => {
         items_failed: result.itemsFailed,
         completed_at: new Date().toISOString(),
         duration_seconds: Math.round(result.duration / 1000),
-        error_details: result.errors.length > 0 ? result.errors : null,
-        // Store metrics in metadata (you might want to add a metrics column to sync_logs table)
-        metadata: {
-          performance: metrics,
-          profile: profile,
-          timestamp: new Date().toISOString()
-        }
+        error_details: result.errors.length > 0 ? result.errors : null
       })
       .eq('id', syncLog.id)
 
-    // End monitoring session
-    await monitoringService.endSession(sessionId)
+    // Send completion notification
+    try {
+      const notificationMessage = result.status === 'completed'
+        ? `Sync completed successfully! Processed ${result.itemsProcessed} items in ${Math.round(result.duration / 1000)}s.`
+        : result.status === 'partial_success'
+        ? `Sync completed with issues. ${result.itemsSucceeded} succeeded, ${result.itemsFailed} failed.`
+        : `Sync failed. ${result.errors.join(', ')}`
 
-    // Record performance metrics
-    await monitoringService.recordPerformanceMetrics(auth.user.id)
+      await supabase.functions.invoke('send-notification', {
+        body: {
+          type: 'email',
+          recipient: auth.user.email || '', // Get from user profile
+          subject: `Sync ${result.status === 'completed' ? 'Completed' : 'Failed'}`,
+          message: notificationMessage,
+          metadata: {
+            syncLogId: syncLog.id,
+            status: result.status,
+            duration: result.duration,
+            itemsProcessed: result.itemsProcessed
+          }
+        }
+      })
+    } catch (notificationError) {
+      console.error('[sync] Failed to send notification:', notificationError)
+      // Don't fail the sync for notification errors
+    }
 
     // Check for alerts
-    await monitoringService.checkAndCreateAlerts(auth.user.id)
+    await monitoringService.checkAlerts(auth.user.id)
 
     return corsJsonHeaders(200, result)
 

@@ -1,5 +1,7 @@
 import { NetSuiteClient, type NetSuiteItem } from './netsuiteClient.ts'
 import { ShopifyClient, type ShopifyProduct } from './shopifyClient.ts'
+import { fieldMappingService } from './fieldMappingService.ts'
+import { rateLimitService } from './rateLimitService.ts'
 
 export interface SyncContext {
   supabase: any
@@ -271,13 +273,21 @@ export class ProductSyncService {
           try {
             const mapping = await this.findOrCreateMapping(nsItem)
 
+            // Apply field mappings to transform NetSuite data for Shopify
+            const mappedData = await fieldMappingService.applyFieldMappings(
+              nsItem,
+              'netsuite',
+              'shopify',
+              this.context.userId
+            )
+
             if (mapping.shopify_product_id) {
-              // Sync to existing Shopify product
-              shopifyOperations.push(this.pushToShopify(nsItem, mapping.shopify_product_id))
+              // Sync to existing Shopify product with mapped data
+              shopifyOperations.push(this.pushToShopify(mappedData, mapping.shopify_product_id))
             } else {
-              // Create new Shopify product
+              // Create new Shopify product with mapped data
               shopifyOperations.push(
-                this.createShopifyProduct(nsItem).then(shopifyProduct => {
+                this.createShopifyProduct(mappedData).then(shopifyProduct => {
                   mappingsToUpdate.push({ mappingId: mapping.id, shopifyProductId: shopifyProduct.id.toString() })
                 })
               )
@@ -553,28 +563,37 @@ export class ProductSyncService {
     }
   }
 
-  private async createShopifyProduct(nsItem: NetSuiteItem): Promise<ShopifyProduct> {
-    const shopifyProduct = await this.context.shopifyClient.createProduct({
-      title: nsItem.displayName,
-      body_html: nsItem.description || '',
-      vendor: nsItem.vendor?.name,
-      product_type: nsItem.itemType,
-      status: nsItem.isInactive ? 'draft' : 'active',
-      variants: [{
-        sku: nsItem.itemId,
-        price: nsItem.basePrice?.toString() || '0',
-        inventory_quantity: nsItem.quantityAvailable || 0,
-        inventory_management: 'shopify'
-      } as any]
-    })
+  private async createShopifyProduct(mappedData: any): Promise<ShopifyProduct> {
+    const result = await rateLimitService.makeIntelligentApiCall(
+      this.context.userId,
+      'shopify',
+      () => this.context.shopifyClient.createProduct({
+        title: mappedData.displayName || mappedData.title || 'Unnamed Product',
+        body_html: mappedData.description || mappedData.body_html || '',
+        vendor: mappedData.vendor?.name || mappedData.vendor,
+        product_type: mappedData.itemType || mappedData.product_type,
+        status: mappedData.isInactive ? 'draft' : 'active',
+        variants: [{
+          sku: mappedData.itemId || mappedData.sku,
+          price: (mappedData.basePrice || mappedData.price || 0).toString(),
+          inventory_quantity: mappedData.quantityAvailable || mappedData.inventory_quantity || 0,
+          inventory_management: 'shopify'
+        } as any]
+      }),
+      { priority: 'normal' }
+    )
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to create Shopify product')
+    }
 
     // Store in our database
-    await this.insertShopifyProductInDb(shopifyProduct)
+    await this.insertShopifyProductInDb(result.data!)
 
-    return shopifyProduct
+    return result.data!
   }
 
-  private async pushToShopify(nsItem: NetSuiteItem, shopifyProductId: string): Promise<void> {
+  private async pushToShopify(mappedData: any, shopifyProductId: string): Promise<void> {
     const { data: shopifyProduct } = await this.context.supabase
       .from('products')
       .select('platform_product_id')
@@ -582,11 +601,20 @@ export class ProductSyncService {
       .single()
 
     if (shopifyProduct) {
-      await this.context.shopifyClient.updateProduct(parseInt(shopifyProduct.platform_product_id), {
-        title: nsItem.displayName,
-        body_html: nsItem.description,
-        status: nsItem.isInactive ? 'draft' : 'active'
-      })
+      const result = await rateLimitService.makeIntelligentApiCall(
+        this.context.userId,
+        'shopify',
+        () => this.context.shopifyClient.updateProduct(parseInt(shopifyProduct.platform_product_id), {
+          title: mappedData.displayName || mappedData.title || 'Unnamed Product',
+          body_html: mappedData.description || mappedData.body_html,
+          status: mappedData.isInactive ? 'draft' : 'active'
+        }),
+        { priority: 'normal' }
+      )
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update Shopify product')
+      }
     }
   }
 

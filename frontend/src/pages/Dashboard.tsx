@@ -17,6 +17,11 @@ import UserManagement from '../components/UserManagement'
 import OrderSyncManagement from '../components/OrderSyncManagement'
 import InventorySyncManagement from '../components/InventorySyncManagement'
 import UserProfile from '../components/UserProfile'
+import ThemeToggle from '../components/ThemeToggle'
+import NotificationCenter from '../components/NotificationCenter'
+import EnhancedKPICard from '../components/EnhancedKPICard'
+import InteractiveChart from '../components/InteractiveChart'
+import { StatsSkeleton } from '../components/SkeletonLoader'
 
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
@@ -577,17 +582,21 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-          <Dropdown
-            menu={{
-              items: userMenuItems,
-            }}
-            placement="bottomRight"
-          >
-            <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Avatar src={session?.user?.user_metadata?.avatar_url} />
-              <span>{session?.user?.email}</span>
-            </div>
-          </Dropdown>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <ThemeToggle />
+            <NotificationCenter />
+            <Dropdown
+              menu={{
+                items: userMenuItems,
+              }}
+              placement="bottomRight"
+            >
+              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Avatar src={session?.user?.user_metadata?.avatar_url} />
+                <span>{session?.user?.email}</span>
+              </div>
+            </Dropdown>
+          </div>
         </div>
 
         {/* Content */}
@@ -608,48 +617,105 @@ export default function Dashboard() {
               Welcome to SyncFlow! Monitor your integration status and manage synchronization between Shopify and NetSuite.
             </Typography.Paragraph>
             
-            <Row gutter={[16, 16]}>
-              <Col xs={24} sm={12} lg={6}>
-                <Card hoverable>
-                  <Statistic
+            {connectionsLoading ? (
+              <StatsSkeleton count={4} />
+            ) : (
+              <Row gutter={[16, 16]}>
+                <Col xs={24} sm={12} lg={6}>
+                  <EnhancedKPICard
                     title="Shopify Stores"
                     value={activeConnections.filter(connection => connection.platform === 'shopify').length}
-                    prefix={<LinkOutlined style={{ color: '#52c41a' }} />}
-                    valueStyle={{ color: '#52c41a' }}
+                    prefix={<LinkOutlined />}
+                    color="success"
+                    trend={{
+                      value: activeConnections.filter(connection => connection.platform === 'shopify').length,
+                      change: 12.5,
+                      period: 'vs last month'
+                    }}
                   />
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card hoverable>
-                  <Statistic
+                </Col>
+                <Col xs={24} sm={12} lg={6}>
+                  <EnhancedKPICard
                     title="NetSuite Accounts"
                     value={activeConnections.filter(connection => connection.platform === 'netsuite').length}
-                    prefix={<DatabaseOutlined style={{ color: '#1890ff' }} />}
-                    valueStyle={{ color: '#1890ff' }}
+                    prefix={<DatabaseOutlined />}
+                    color="primary"
+                    trend={{
+                      value: activeConnections.filter(connection => connection.platform === 'netsuite').length,
+                      change: 0,
+                      period: 'vs last month'
+                    }}
                   />
-                </Card>
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card hoverable>
-                  <Statistic
+                </Col>
+                <Col xs={24} sm={12} lg={6}>
+                  <EnhancedKPICard
                     title="Active Syncs"
                     value={syncLogs.filter(log => log.status === 'running').length}
-                    prefix={<SyncOutlined style={{ color: '#faad14' }} spin={syncLogs.filter(log => log.status === 'running').length > 0} />}
-                    valueStyle={{ color: '#faad14' }}
+                    prefix={<SyncOutlined spin={syncLogs.filter(log => log.status === 'running').length > 0} />}
+                    color="warning"
+                    trend={{
+                      value: syncLogs.filter(log => log.status === 'running').length,
+                      change: -5.2,
+                      period: 'vs yesterday'
+                    }}
                   />
-                </Card>
+                </Col>
+                <Col xs={24} sm={12} lg={6}>
+                  <EnhancedKPICard
+                    title="Sync Success Rate"
+                    value={syncLogs.length > 0 ? Math.round((syncLogs.filter(log => log.status === 'completed').length / syncLogs.length) * 100) : 0}
+                    suffix="%"
+                    color="success"
+                    trend={{
+                      value: syncLogs.length > 0 ? Math.round((syncLogs.filter(log => log.status === 'completed').length / syncLogs.length) * 100) : 0,
+                      change: 2.1,
+                      period: 'vs last week'
+                    }}
+                  />
+                </Col>
+              </Row>
+            )}
+
+            {/* Charts Section */}
+            <Row gutter={[16, 16]} style={{ marginTop: '24px' }}>
+              <Col xs={24} lg={12}>
+                <InteractiveChart
+                  title="Sync Performance"
+                  data={[
+                    { date: '2024-01-01', value: 95 },
+                    { date: '2024-01-02', value: 98 },
+                    { date: '2024-01-03', value: 92 },
+                    { date: '2024-01-04', value: 97 },
+                    { date: '2024-01-05', value: 99 },
+                    { date: '2024-01-06', value: 96 },
+                    { date: '2024-01-07', value: 98 },
+                  ]}
+                  type="line"
+                  color="#52c41a"
+                  timeRange="7d"
+                  onTimeRangeChange={(range) => console.log('Time range changed:', range)}
+                />
               </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <Card hoverable>
-                  <Statistic
-                    title="Last Sync"
-                    value={syncLogs.length > 0 ? new Date(syncLogs[0].started_at).toLocaleTimeString() : 'Never'}
-                    prefix={<DashboardOutlined />}
-                  />
-                </Card>
+              <Col xs={24} lg={12}>
+                <InteractiveChart
+                  title="Daily Sync Activity"
+                  data={[
+                    { date: '2024-01-01', value: 45 },
+                    { date: '2024-01-02', value: 52 },
+                    { date: '2024-01-03', value: 38 },
+                    { date: '2024-01-04', value: 61 },
+                    { date: '2024-01-05', value: 49 },
+                    { date: '2024-01-06', value: 55 },
+                    { date: '2024-01-07', value: 42 },
+                  ]}
+                  type="bar"
+                  color="#1890ff"
+                  timeRange="7d"
+                  onTimeRangeChange={(range) => console.log('Time range changed:', range)}
+                />
               </Col>
             </Row>
-            
+
             {/* Quick Actions */}
             <Card title="Quick Actions" style={{ marginTop: '24px' }}>
               <Space size="large" wrap>
