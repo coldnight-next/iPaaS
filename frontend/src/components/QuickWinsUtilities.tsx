@@ -270,29 +270,52 @@ export function QuickRetryButton({ session, syncLogId, onRetryComplete }: QuickR
         .single()
 
       if (logError) throw logError
+      if (!log) throw new Error('Sync log not found')
 
-      // TODO: Call your sync function with the same parameters
-      // This is a placeholder - you'll need to implement the actual retry logic
-      // For now, we'll just show a message
-      message.info('Retry functionality will trigger a new sync with the same parameters')
+      // Determine the sync endpoint based on sync_type
+      const syncTypeMap: Record<string, string> = {
+        'order_sync': 'sync-orders',
+        'inventory_sync': 'sync-inventory',
+        'product_sync': 'sync',
+        'manual': 'sync',
+        'scheduled': 'sync',
+        'webhook': 'sync',
+        'bulk': 'sync'
+      }
+
+      const endpoint = syncTypeMap[log.sync_type] || 'sync'
+      const functionsBase = import.meta.env.VITE_SUPABASE_URL
+        ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+        : 'http://localhost:54321/functions/v1'
+
+      // Retry the sync with original parameters
+      const response = await fetch(`${functionsBase}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          // Pass metadata if it exists (contains original parameters)
+          ...(log.metadata as Record<string, any> || {}),
+          // Indicate this is a retry
+          isRetry: true,
+          originalSyncLogId: syncLogId
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Sync retry failed')
+      }
+
+      const result = await response.json()
       
-      // Example: You would call something like:
-      // await fetch(`${FUNCTIONS_BASE}/sync`, {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //     Authorization: `Bearer ${session.access_token}`
-      //   },
-      //   body: JSON.stringify({
-      //     profile: log.metadata // or whatever parameters you need
-      //   })
-      // })
-
-      message.success('Sync retry initiated')
+      message.success(`Sync retry completed successfully! ${result.summary?.itemsSucceeded || 0} items synced.`)
       onRetryComplete?.()
     } catch (error) {
       console.error('Retry error:', error)
-      message.error('Failed to retry sync')
+      message.error(error instanceof Error ? error.message : 'Failed to retry sync')
     } finally {
       setRetrying(false)
     }

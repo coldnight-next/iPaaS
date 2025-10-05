@@ -76,6 +76,8 @@ export interface NetSuiteSalesOrder {
 export class NetSuiteClient {
   private config: NetSuiteConfig
   private baseUrl: string
+  private requestCount = 0
+  private rateLimitResetTime = Date.now()
 
   constructor(config: NetSuiteConfig) {
     this.config = config
@@ -101,6 +103,26 @@ export class NetSuiteClient {
     })
   }
 
+  private async handleRateLimit(): Promise<void> {
+    // NetSuite SuiteTalk has rate limits, but they're not as well documented as Shopify's
+    // We'll implement a conservative rate limiter: max 10 requests per second
+    const now = Date.now()
+    if (this.requestCount >= 10) {
+      const timeSinceReset = now - this.rateLimitResetTime
+      if (timeSinceReset < 1000) {
+        const waitTime = 1000 - timeSinceReset
+        console.log(`[NetSuite] Rate limit approaching, waiting ${waitTime}ms`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
+        this.requestCount = 0
+        this.rateLimitResetTime = Date.now()
+      } else {
+        this.requestCount = 0
+        this.rateLimitResetTime = now
+      }
+    }
+    this.requestCount++
+  }
+
   private async request<T>(
     endpoint: string,
     options: {
@@ -109,8 +131,10 @@ export class NetSuiteClient {
       params?: Record<string, string>
     } = {}
   ): Promise<T> {
+    await this.handleRateLimit()
+
     const url = new URL(`${this.baseUrl}/${endpoint}`)
-    
+
     if (options.params) {
       Object.entries(options.params).forEach(([key, value]) => {
         url.searchParams.set(key, value)
@@ -133,6 +157,16 @@ export class NetSuiteClient {
     if (!response.ok) {
       const errorText = await response.text()
       console.error('[NetSuite] API Error:', response.status, errorText)
+
+      // Handle rate limiting
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After')
+        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 5000
+        console.log(`[NetSuite] Rate limited, retrying after ${waitTime}ms`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
+        return this.request<T>(endpoint, options)
+      }
+
       throw new Error(`NetSuite API error (${response.status}): ${errorText}`)
     }
 

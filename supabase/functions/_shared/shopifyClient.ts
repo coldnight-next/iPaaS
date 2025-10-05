@@ -133,6 +133,11 @@ export class ShopifyClient {
   private rateLimitRemaining = 40
   private rateLimitResetTime = Date.now()
 
+  // Connection pooling
+  private static connectionPool = new Map<string, ShopifyClient>()
+  private static readonly MAX_POOL_SIZE = 10
+  private static readonly CONNECTION_TTL = 5 * 60 * 1000 // 5 minutes
+
   constructor(config: ShopifyConfig) {
     this.config = config
     const apiVersion = config.apiVersion || '2024-01'
@@ -152,10 +157,50 @@ export class ShopifyClient {
       throw new Error('Shopify connection is missing required credentials')
     }
 
-    return new ShopifyClient({
+    // Check connection pool first
+    const poolKey = `${shopDomain}:${decrypted.access_token.substring(0, 10)}`
+    const existingClient = ShopifyClient.connectionPool.get(poolKey)
+
+    if (existingClient) {
+      console.log(`[Shopify] Reusing pooled connection for ${shopDomain}`)
+      return existingClient
+    }
+
+    // Clean up expired connections if pool is full
+    if (ShopifyClient.connectionPool.size >= ShopifyClient.MAX_POOL_SIZE) {
+      ShopifyClient.cleanupExpiredConnections()
+    }
+
+    // Create new client and add to pool
+    const client = new ShopifyClient({
       shopDomain,
       accessToken: decrypted.access_token
     })
+
+    // Store with timestamp for TTL management
+    ;(client as any).createdAt = Date.now()
+    ShopifyClient.connectionPool.set(poolKey, client)
+
+    console.log(`[Shopify] Created new pooled connection for ${shopDomain}`)
+    return client
+  }
+
+  private static cleanupExpiredConnections(): void {
+    const now = Date.now()
+    const expiredKeys: string[] = []
+
+    for (const [key, client] of ShopifyClient.connectionPool.entries()) {
+      const createdAt = (client as any).createdAt || 0
+      if (now - createdAt > ShopifyClient.CONNECTION_TTL) {
+        expiredKeys.push(key)
+      }
+    }
+
+    expiredKeys.forEach(key => {
+      ShopifyClient.connectionPool.delete(key)
+    })
+
+    console.log(`[Shopify] Cleaned up ${expiredKeys.length} expired connections`)
   }
 
   private async handleRateLimit(): Promise<void> {
@@ -274,12 +319,79 @@ export class ShopifyClient {
     return response.product
   }
 
+  // ========== BATCH OPERATIONS ==========
+
+  async createProducts(products: Partial<ShopifyProduct>[]): Promise<ShopifyProduct[]> {
+    if (products.length === 0) return []
+    if (products.length === 1) {
+      return [await this.createProduct(products[0])]
+    }
+
+    // Process in smaller batches to avoid payload size limits
+    const batchSize = 5
+    const results: ShopifyProduct[] = []
+
+    for (let i = 0; i < products.length; i += batchSize) {
+      const batch = products.slice(i, i + batchSize)
+      const batchPromises = batch.map(product => this.createProduct(product))
+
+      try {
+        const batchResults = await Promise.allSettled(batchPromises)
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            results.push(result.value)
+          } else {
+            console.error('[Shopify] Batch create failed:', result.reason)
+            // Continue with other items in batch
+          }
+        }
+      } catch (error) {
+        console.error('[Shopify] Batch operation failed:', error)
+      }
+    }
+
+    return results
+  }
+
   async updateProduct(productId: number, updates: Partial<ShopifyProduct>): Promise<ShopifyProduct> {
     const response = await this.request<{ product: ShopifyProduct }>(`products/${productId}.json`, {
       method: 'PUT',
       body: { product: updates }
     })
     return response.product
+  }
+
+  async updateProducts(updates: Array<{ id: number; updates: Partial<ShopifyProduct> }>): Promise<ShopifyProduct[]> {
+    if (updates.length === 0) return []
+    if (updates.length === 1) {
+      return [await this.updateProduct(updates[0].id, updates[0].updates)]
+    }
+
+    // Process in smaller batches to avoid rate limits
+    const batchSize = 3
+    const results: ShopifyProduct[] = []
+
+    for (let i = 0; i < updates.length; i += batchSize) {
+      const batch = updates.slice(i, i + batchSize)
+      const batchPromises = batch.map(({ id, updates: productUpdates }) =>
+        this.updateProduct(id, productUpdates)
+      )
+
+      try {
+        const batchResults = await Promise.allSettled(batchPromises)
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            results.push(result.value)
+          } else {
+            console.error('[Shopify] Batch update failed:', result.reason)
+          }
+        }
+      } catch (error) {
+        console.error('[Shopify] Batch update operation failed:', error)
+      }
+    }
+
+    return results
   }
 
   async deleteProduct(productId: number): Promise<void> {

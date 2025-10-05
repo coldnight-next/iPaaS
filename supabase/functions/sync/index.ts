@@ -77,6 +77,26 @@ serve(async req => {
   const startTime = Date.now()
 
   try {
+    // Check for running syncs to prevent concurrent operations
+    const { data: runningSyncs, error: runningSyncsError } = await supabase
+      .from('sync_logs')
+      .select('id')
+      .eq('user_id', auth.user.id)
+      .eq('status', 'running')
+      .limit(1)
+
+    if (runningSyncsError) {
+      console.error('[sync] Error checking running syncs:', runningSyncsError)
+      return corsJsonHeaders(500, { error: 'database_error', message: 'Failed to check running syncs' })
+    }
+
+    if (runningSyncs && runningSyncs.length > 0) {
+      return corsJsonHeaders(409, {
+        error: 'sync_in_progress',
+        message: 'A sync operation is already running. Please wait for it to complete.'
+      })
+    }
+
     // Get user connections
     const { data: connections, error: connectionsError } = await supabase
       .from('connections')
@@ -207,7 +227,20 @@ serve(async req => {
 
     result.duration = Date.now() - startTime
 
-    // Update sync log
+    // Collect performance metrics
+    const metrics = {
+      totalDuration: result.duration,
+      itemsPerSecond: result.itemsProcessed / (result.duration / 1000),
+      successRate: result.itemsProcessed > 0 ? (result.itemsSucceeded / result.itemsProcessed) * 100 : 0,
+      errorRate: result.itemsProcessed > 0 ? (result.itemsFailed / result.itemsProcessed) * 100 : 0,
+      profile: profile.name,
+      direction: profile.syncDirection,
+      dataTypes: Object.keys(profile.dataTypes).filter(key => profile.dataTypes[key as keyof typeof profile.dataTypes])
+    }
+
+    console.log('[sync] Performance metrics:', metrics)
+
+    // Update sync log with metrics
     await supabase
       .from('sync_logs')
       .update({
@@ -217,7 +250,13 @@ serve(async req => {
         items_failed: result.itemsFailed,
         completed_at: new Date().toISOString(),
         duration_seconds: Math.round(result.duration / 1000),
-        error_details: result.errors.length > 0 ? result.errors : null
+        error_details: result.errors.length > 0 ? result.errors : null,
+        // Store metrics in metadata (you might want to add a metrics column to sync_logs table)
+        metadata: {
+          performance: metrics,
+          profile: profile,
+          timestamp: new Date().toISOString()
+        }
       })
       .eq('id', syncLog.id)
 
