@@ -45,6 +45,21 @@ interface SyncHistory {
   duration_seconds?: number
 }
 
+interface SyncSchedule {
+  id: string
+  name: string
+  description?: string
+  schedule_type: string
+  cron_expression?: string
+  interval_minutes?: number
+  is_active: boolean
+  last_run?: string
+  next_run?: string
+  sync_direction: string
+  target_filters: any
+  created_at: string
+}
+
 const configuredFunctionsBase = import.meta.env.VITE_FUNCTIONS_BASE_URL as string | undefined
 const inferredFunctionsBase = import.meta.env.VITE_SUPABASE_URL
   ? `${(import.meta.env.VITE_SUPABASE_URL as string).replace(/\/$/, '')}/functions/v1`
@@ -61,13 +76,19 @@ export default function SyncManagement() {
   const [currentFilters, setCurrentFilters] = useState<any>({})
   const [populatingPattern, setPopulatingPattern] = useState<string | null>(null)
   const [savingPattern, setSavingPattern] = useState(false)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+  const [bulkSyncLoading, setBulkSyncLoading] = useState(false)
+  const [syncSchedules, setSyncSchedules] = useState<SyncSchedule[]>([])
+  const [scheduleModalVisible, setScheduleModalVisible] = useState(false)
   const [form] = Form.useForm()
+  const [scheduleForm] = Form.useForm()
 
   useEffect(() => {
     if (session) {
       loadSavedPatterns()
       loadSyncList()
       loadSyncHistory()
+      loadSyncSchedules()
     }
   }, [session])
 
@@ -102,15 +123,42 @@ export default function SyncManagement() {
   const loadSyncHistory = async () => {
     try {
       const { data, error } = await supabase
-        .from('sync_history')
+        .from('sync_logs')
         .select('*')
         .order('started_at', { ascending: false })
         .limit(20)
 
       if (error) throw error
-      setSyncHistory(data || [])
+      // Transform sync_logs to match expected format
+      const transformedData = (data || []).map(log => ({
+        id: log.id,
+        sync_type: log.sync_type,
+        items_synced: log.items_processed || 0,
+        items_created: log.items_succeeded || 0,
+        items_updated: 0, // Not tracked separately in our schema
+        items_failed: log.items_failed || 0,
+        status: log.status,
+        started_at: log.started_at,
+        completed_at: log.completed_at,
+        duration_seconds: log.duration_seconds
+      }))
+      setSyncHistory(transformedData)
     } catch (error) {
       console.error('Error loading sync history:', error)
+    }
+  }
+
+  const loadSyncSchedules = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sync_schedules')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setSyncSchedules(data || [])
+    } catch (error) {
+      console.error('Error loading sync schedules:', error)
     }
   }
 
@@ -281,6 +329,178 @@ export default function SyncManagement() {
       loadSyncList()
     } catch (error: any) {
       message.error('Failed to update: ' + error.message)
+    }
+  }
+
+  const bulkSyncSelected = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('Please select items to sync')
+      return
+    }
+
+    setBulkSyncLoading(true)
+    try {
+      // Get selected items
+      const selectedItems = syncList.filter(item => selectedRowKeys.includes(item.id))
+
+      // Group by sync direction for efficient processing
+      const directionGroups = selectedItems.reduce((acc, item) => {
+        const direction = item.sync_direction
+        if (!acc[direction]) acc[direction] = []
+        acc[direction].push(item)
+        return acc
+      }, {} as Record<string, SyncListItem[]>)
+
+      let totalProcessed = 0
+      let totalSucceeded = 0
+      let totalFailed = 0
+
+      // Process each direction group
+      for (const [direction, items] of Object.entries(directionGroups)) {
+        try {
+          const response = await fetch(`${FUNCTIONS_BASE}/sync`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify({
+              profile: {
+                dataTypes: { products: true, inventory: true, orders: true },
+                syncDirection: direction,
+                filters: {}
+              }
+            })
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.error || 'Sync failed')
+          }
+
+          const result = await response.json()
+          totalProcessed += result.itemsProcessed
+          totalSucceeded += result.itemsSucceeded
+          totalFailed += result.itemsFailed
+
+          // Update sync status for processed items
+          for (const item of items) {
+            await supabase
+              .from('sync_list')
+              .update({
+                last_synced_at: new Date().toISOString(),
+                last_sync_status: 'success',
+                sync_count: (item.sync_count || 0) + 1
+              })
+              .eq('id', item.id)
+          }
+
+        } catch (error: any) {
+          console.error(`Bulk sync failed for ${direction}:`, error)
+          totalFailed += items.length
+
+          // Mark failed items
+          for (const item of items) {
+            await supabase
+              .from('sync_list')
+              .update({
+                last_sync_status: 'failed'
+              })
+              .eq('id', item.id)
+          }
+        }
+      }
+
+      message.success(
+        `Bulk sync completed! ${totalSucceeded} succeeded, ${totalFailed} failed`
+      )
+
+      // Refresh data
+      await Promise.all([loadSyncList(), loadSyncHistory()])
+
+    } catch (error: any) {
+      console.error('Bulk sync error:', error)
+      message.error('Bulk sync failed: ' + error.message)
+    } finally {
+      setBulkSyncLoading(false)
+      setSelectedRowKeys([])
+    }
+  }
+
+  const bulkRemoveSelected = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('Please select items to remove')
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('sync_list')
+        .delete()
+        .in('id', selectedRowKeys)
+
+      if (error) throw error
+
+      message.success(`${selectedRowKeys.length} items removed from sync list`)
+      setSelectedRowKeys([])
+      loadSyncList()
+    } catch (error: any) {
+      message.error('Failed to remove items: ' + error.message)
+    }
+  }
+
+  const createSyncSchedule = async () => {
+    try {
+      const values = await scheduleForm.validateFields()
+      const { data, error } = await supabase
+        .from('sync_schedules')
+        .insert([{
+          user_id: session?.user.id,
+          ...values,
+          is_active: true
+        }])
+        .select()
+
+      if (error) throw error
+
+      message.success('Sync schedule created!')
+      setScheduleModalVisible(false)
+      scheduleForm.resetFields()
+      loadSyncSchedules()
+    } catch (error: any) {
+      message.error('Failed to create schedule: ' + error.message)
+    }
+  }
+
+  const toggleScheduleStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('sync_schedules')
+        .update({ is_active: !currentStatus })
+        .eq('id', id)
+
+      if (error) throw error
+
+      message.success(`Schedule ${!currentStatus ? 'enabled' : 'disabled'}`)
+      loadSyncSchedules()
+    } catch (error: any) {
+      message.error('Failed to update schedule: ' + error.message)
+    }
+  }
+
+  const deleteSchedule = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('sync_schedules')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      message.success('Schedule deleted')
+      loadSyncSchedules()
+    } catch (error: any) {
+      message.error('Failed to delete schedule: ' + error.message)
     }
   }
 
@@ -492,6 +712,80 @@ export default function SyncManagement() {
     }
   ]
 
+  const scheduleColumns = [
+    {
+      title: 'Name',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string, record: SyncSchedule) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{name}</Text>
+          {record.description && (
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              {record.description}
+            </Text>
+          )}
+        </Space>
+      )
+    },
+    {
+      title: 'Schedule',
+      dataIndex: 'schedule_type',
+      key: 'schedule_type',
+      render: (type: string, record: SyncSchedule) => {
+        if (type === 'interval') {
+          return <Text>Every {record.interval_minutes} minutes</Text>
+        } else if (type === 'cron') {
+          return <Text>Cron: {record.cron_expression}</Text>
+        }
+        return <Text>Manual</Text>
+      }
+    },
+    {
+      title: 'Direction',
+      dataIndex: 'sync_direction',
+      key: 'sync_direction',
+      render: (dir: string) => <Tag>{dir}</Tag>
+    },
+    {
+      title: 'Last Run',
+      dataIndex: 'last_run',
+      key: 'last_run',
+      render: (date?: string) => date ? new Date(date).toLocaleString() : 'Never'
+    },
+    {
+      title: 'Next Run',
+      dataIndex: 'next_run',
+      key: 'next_run',
+      render: (date?: string) => date ? new Date(date).toLocaleString() : 'N/A'
+    },
+    {
+      title: 'Status',
+      dataIndex: 'is_active',
+      key: 'is_active',
+      render: (active: boolean, record: SyncSchedule) => (
+        <Switch
+          checked={active}
+          onChange={() => toggleScheduleStatus(record.id, active)}
+          checkedChildren="Active"
+          unCheckedChildren="Inactive"
+        />
+      )
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      render: (_: any, record: SyncSchedule) => (
+        <Space>
+          <Button size="small" type="primary" icon={<SyncOutlined />}>Run Now</Button>
+          <Popconfirm title="Delete this schedule?" onConfirm={() => deleteSchedule(record.id)}>
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      )
+    }
+  ]
+
   return (
     <div style={{ padding: '24px' }}>
       <Card>
@@ -562,7 +856,40 @@ export default function SyncManagement() {
                 </Card>
               </Col>
             </Row>
+            <Space style={{ marginBottom: 16 }}>
+              <Button
+                type="primary"
+                icon={<SyncOutlined />}
+                onClick={bulkSyncSelected}
+                loading={bulkSyncLoading}
+                disabled={selectedRowKeys.length === 0}
+              >
+                Sync Selected ({selectedRowKeys.length})
+              </Button>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={bulkRemoveSelected}
+                disabled={selectedRowKeys.length === 0}
+              >
+                Remove Selected ({selectedRowKeys.length})
+              </Button>
+              {selectedRowKeys.length > 0 && (
+                <Button onClick={() => setSelectedRowKeys([])}>
+                  Clear Selection
+                </Button>
+              )}
+            </Space>
             <Table
+              rowSelection={{
+                selectedRowKeys,
+                onChange: setSelectedRowKeys,
+                selections: [
+                  Table.SELECTION_ALL,
+                  Table.SELECTION_INVERT,
+                  Table.SELECTION_NONE,
+                ],
+              }}
               columns={syncListColumns}
               dataSource={syncList}
               rowKey="id"
@@ -576,6 +903,32 @@ export default function SyncManagement() {
               dataSource={syncHistory}
               rowKey="id"
               pagination={{ pageSize: 20 }}
+            />
+          </TabPane>
+
+          <TabPane tab={<span><ClockCircleOutlined /> Schedules ({syncSchedules.length})</span>} key="schedules">
+            <Alert
+              message="Automated Sync Schedules"
+              description="Create schedules to automatically run sync operations at regular intervals. Supports both interval-based and cron expression scheduling."
+              type="info"
+              showIcon
+              closable
+              style={{ marginBottom: 16 }}
+            />
+            <Space style={{ marginBottom: 16 }}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setScheduleModalVisible(true)}
+              >
+                Create Schedule
+              </Button>
+            </Space>
+            <Table
+              columns={scheduleColumns}
+              dataSource={syncSchedules}
+              rowKey="id"
+              pagination={{ pageSize: 10 }}
             />
           </TabPane>
         </Tabs>
@@ -651,6 +1004,84 @@ export default function SyncManagement() {
                 <Select.Option value="hourly">Hourly</Select.Option>
                 <Select.Option value="daily">Daily</Select.Option>
                 <Select.Option value="weekly">Weekly</Select.Option>
+              </Select>
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        <Modal
+          title="Create Sync Schedule"
+          open={scheduleModalVisible}
+          onOk={createSyncSchedule}
+          onCancel={() => {
+            setScheduleModalVisible(false)
+            scheduleForm.resetFields()
+          }}
+          width={600}
+          okText="Create Schedule"
+        >
+          <Form form={scheduleForm} layout="vertical">
+            <Form.Item
+              label="Schedule Name"
+              name="name"
+              rules={[{ required: true, message: 'Please enter a name' }]}
+            >
+              <Input placeholder="e.g., Daily Product Sync" />
+            </Form.Item>
+            <Form.Item label="Description" name="description">
+              <TextArea rows={2} placeholder="Optional description" />
+            </Form.Item>
+            <Form.Item
+              label="Schedule Type"
+              name="schedule_type"
+              rules={[{ required: true }]}
+            >
+              <Select>
+                <Select.Option value="interval">Interval (minutes)</Select.Option>
+                <Select.Option value="cron">Cron Expression</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item
+              noStyle
+              shouldUpdate={(prevValues, currentValues) => prevValues.schedule_type !== currentValues.schedule_type}
+            >
+              {({ getFieldValue }) =>
+                getFieldValue('schedule_type') === 'interval' ? (
+                  <Form.Item
+                    label="Interval (minutes)"
+                    name="interval_minutes"
+                    rules={[{ required: true, message: 'Please enter interval' }]}
+                  >
+                    <Select placeholder="Select interval">
+                      <Select.Option value={15}>15 minutes</Select.Option>
+                      <Select.Option value={30}>30 minutes</Select.Option>
+                      <Select.Option value={60}>1 hour</Select.Option>
+                      <Select.Option value={360}>6 hours</Select.Option>
+                      <Select.Option value={720}>12 hours</Select.Option>
+                      <Select.Option value={1440}>24 hours</Select.Option>
+                    </Select>
+                  </Form.Item>
+                ) : (
+                  <Form.Item
+                    label="Cron Expression"
+                    name="cron_expression"
+                    rules={[{ required: true, message: 'Please enter cron expression' }]}
+                    tooltip="Examples: '0 */1 * * *' (hourly), '0 9 * * *' (daily at 9am)"
+                  >
+                    <Input placeholder="0 */1 * * * (hourly)" />
+                  </Form.Item>
+                )
+              }
+            </Form.Item>
+            <Form.Item
+              label="Sync Direction"
+              name="sync_direction"
+              rules={[{ required: true }]}
+            >
+              <Select>
+                <Select.Option value="netsuite_to_shopify">NetSuite → Shopify</Select.Option>
+                <Select.Option value="shopify_to_netsuite">Shopify → NetSuite</Select.Option>
+                <Select.Option value="bidirectional">Bidirectional</Select.Option>
               </Select>
             </Form.Item>
           </Form>

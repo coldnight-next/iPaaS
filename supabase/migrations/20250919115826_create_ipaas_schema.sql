@@ -330,10 +330,80 @@ begin
 end;
 $$ language plpgsql;
 
+-- Sync list table for managing items to sync
+create table sync_list (
+   id uuid primary key default gen_random_uuid(),
+   user_id uuid references auth.users on delete cascade,
+   netsuite_item_id text,
+   shopify_product_id text,
+   sku text,
+   product_name text not null,
+   sync_direction text default 'bidirectional' check (sync_direction in ('netsuite_to_shopify', 'shopify_to_netsuite', 'bidirectional')),
+   sync_mode text default 'delta' check (sync_mode in ('delta', 'full')),
+   last_synced_at timestamp with time zone,
+   last_sync_status text check (last_sync_status in ('success', 'failed', 'pending', 'running')),
+   sync_count integer default 0,
+   is_active boolean default true,
+   priority integer default 1,
+   metadata jsonb default '{}',
+   created_at timestamp with time zone default now(),
+   updated_at timestamp with time zone default now(),
+   unique(user_id, netsuite_item_id, shopify_product_id)
+);
+
+-- Saved search patterns table
+create table saved_search_patterns (
+   id uuid primary key default gen_random_uuid(),
+   user_id uuid references auth.users on delete cascade,
+   name text not null,
+   description text,
+   netsuite_saved_search_id text,
+   sync_direction text default 'bidirectional' check (sync_direction in ('netsuite-to-shopify', 'shopify-to-netsuite', 'bidirectional')),
+   filters jsonb default '{}',
+   auto_populate boolean default false,
+   population_frequency text default 'manual' check (population_frequency in ('manual', 'hourly', 'daily', 'weekly')),
+   last_populated_at timestamp with time zone,
+   is_active boolean default true,
+   metadata jsonb default '{}',
+   created_at timestamp with time zone default now(),
+   updated_at timestamp with time zone default now(),
+   unique(user_id, name)
+);
+
+-- Indexes for sync_list
+create index idx_sync_list_user on sync_list(user_id);
+create index idx_sync_list_active on sync_list(is_active);
+create index idx_sync_list_priority on sync_list(priority desc);
+create index idx_sync_list_last_sync on sync_list(last_synced_at desc);
+create index idx_sync_list_sku on sync_list(sku);
+
+-- Indexes for saved_search_patterns
+create index idx_saved_patterns_user on saved_search_patterns(user_id);
+create index idx_saved_patterns_active on saved_search_patterns(is_active);
+create index idx_saved_patterns_name on saved_search_patterns(name);
+
+-- Row Level Security policies for sync_list
+alter table sync_list enable row level security;
+
+create policy "Users can view their own sync list" on sync_list
+   for select using (auth.uid() = user_id);
+
+create policy "Users can manage their own sync list" on sync_list
+   for all using (auth.uid() = user_id);
+
+-- Row Level Security policies for saved_search_patterns
+alter table saved_search_patterns enable row level security;
+
+create policy "Users can view their saved patterns" on saved_search_patterns
+   for select using (auth.uid() = user_id);
+
+create policy "Users can manage their saved patterns" on saved_search_patterns
+   for all using (auth.uid() = user_id);
+
 -- Insert default sync configurations
 insert into sync_configurations (user_id, config_key, config_value, description) values
-  (null, 'global_sync_settings', '{"max_concurrent_syncs": 5, "default_retry_count": 3, "sync_timeout_seconds": 300}', 'Global synchronization settings'),
-  (null, 'netsuite_settings', '{"api_version": "2023.2", "page_size": 1000, "rate_limit_delay": 1000}', 'NetSuite API configuration'),
-  (null, 'shopify_settings', '{"api_version": "2024-01", "rate_limit_delay": 500, "max_request_retries": 3}', 'Shopify API configuration');
+   (null, 'global_sync_settings', '{"max_concurrent_syncs": 5, "default_retry_count": 3, "sync_timeout_seconds": 300}', 'Global synchronization settings'),
+   (null, 'netsuite_settings', '{"api_version": "2023.2", "page_size": 1000, "rate_limit_delay": 1000}', 'NetSuite API configuration'),
+   (null, 'shopify_settings', '{"api_version": "2024-01", "rate_limit_delay": 500, "max_request_retries": 3}', 'Shopify API configuration');
 
 -- Note: The null user_id configurations are global defaults that can be overridden per user

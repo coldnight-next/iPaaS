@@ -1,295 +1,175 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { decryptJson } from '../_shared/encryption.ts'
-import { proactiveTokenRefresh, refreshNetSuiteToken } from '../_shared/tokenRefresh.ts'
+import { withCors } from '../_shared/cors.ts'
+import { createSupabaseClient, getUserFromRequest } from '../_shared/supabaseClient.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+interface PopulateRequest {
+  patternId: string
+  clearExisting?: boolean
 }
 
-interface PopulateSyncListRequest {
-  patternId: string  // The saved search pattern ID
-  syncDirection?: string  // Override the pattern's sync direction if needed
-  clearExisting?: boolean  // Whether to clear existing items before populating
-}
+serve(async req => {
+  const origin = req.headers.get('origin')
 
-serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, {
+      headers: withCors({ 'Access-Control-Allow-Methods': 'POST,OPTIONS' }, origin)
+    })
   }
 
+  const corsJsonHeaders = (status: number, payload: unknown) => new Response(JSON.stringify(payload), {
+    status,
+    headers: withCors({ 'content-type': 'application/json' }, origin)
+  })
+
+  if (req.method !== 'POST') {
+    return corsJsonHeaders(405, { error: 'method_not_allowed', message: 'Use POST' })
+  }
+
+  let auth
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    )
-
-    // Get the user
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser()
-
-    if (userError || !user) {
-      throw new Error('Unauthorized')
+    auth = await getUserFromRequest(req)
+  } catch (error) {
+    if (error instanceof Response) {
+      return new Response(await error.text(), {
+        status: error.status,
+        headers: withCors(Object.fromEntries(error.headers.entries()), origin)
+      })
     }
+    console.error('[populate-sync-list] Unexpected auth error', error)
+    return corsJsonHeaders(500, { error: 'internal_error', message: 'Unable to authenticate request' })
+  }
 
-    const { patternId, syncDirection, clearExisting = false }: PopulateSyncListRequest = await req.json()
+  let body: PopulateRequest | null = null
+  try {
+    body = await req.json()
+  } catch (_error) {
+    return corsJsonHeaders(400, { error: 'invalid_payload', message: 'Body must be valid JSON' })
+  }
 
-    // Fetch the saved search pattern
-    const { data: pattern, error: patternError } = await supabaseClient
+  if (!body?.patternId) {
+    return corsJsonHeaders(400, { error: 'invalid_payload', message: 'patternId is required' })
+  }
+
+  const supabase = createSupabaseClient()
+
+  try {
+    // Get the pattern
+    const { data: pattern, error: patternError } = await supabase
       .from('saved_search_patterns')
       .select('*')
-      .eq('id', patternId)
-      .eq('user_id', user.id)
+      .eq('id', body.patternId)
+      .eq('user_id', auth.user.id)
       .single()
 
     if (patternError || !pattern) {
-      throw new Error('Saved search pattern not found')
+      console.error('[populate-sync-list] Pattern not found:', patternError)
+      return corsJsonHeaders(404, { error: 'pattern_not_found', message: 'Pattern not found' })
     }
 
-    // Get NetSuite connection details
-    const { data: connection, error: connError } = await supabaseClient
-      .from('connections')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('platform', 'netsuite')
-      .eq('status', 'connected')
-      .single()
-
-    if (connError || !connection) {
-      throw new Error('NetSuite connection not found or not active')
-    }
-
-    // Decrypt credentials
-    let credentials = await decryptJson(connection.credentials.encrypted)
-    const accountId = connection.metadata?.account_id
-    
-    if (!accountId) {
-      throw new Error('NetSuite account ID not found in connection metadata')
-    }
-    
-    console.log('Account ID:', accountId)
-    
-    // Proactively refresh token if it's about to expire
-    credentials.access_token = await proactiveTokenRefresh(connection.id, credentials)
-    const accessToken = credentials.access_token
-
-    let items: any[] = []
-
-    // Check if this is a NetSuite saved search or a filter-based pattern
-    if (pattern.netsuite_saved_search_id) {
-      // Note: NetSuite REST API doesn't directly support saved search execution
-      // For now, redirect to use filters instead
-      throw new Error(
-        'NetSuite saved search execution via REST API is not yet supported. ' +
-        'Please use filter-based patterns instead. ' +
-        'You can create filters in Product Sync Preview and save them as a pattern. ' +
-        'Saved search support will be added in a future update using NetSuite\'s SuiteQL or Search API.'
-      )
-    } else if (pattern.filters && Object.keys(pattern.filters).length > 0) {
-      console.log('Fetching items using filter criteria:', pattern.filters)
-      
-      // Use the existing fetch-products logic with the pattern's filters
-      const filters = pattern.filters
-      
-      // Use itemType filter if specified, otherwise fetch from all types
-      const itemTypes = filters.itemType && filters.itemType.length > 0 
-        ? filters.itemType 
-        : ['inventoryItem', 'nonInventoryItem', 'assemblyItem', 'kitItem', 'serviceItem']
-      
-      console.log('Fetching from item types:', itemTypes)
-      
-      for (const itemType of itemTypes) {
-        const baseUrl = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/record/v1/${itemType}`
-        
-        // Build query parameters
-        const params = new URLSearchParams()
-        params.append('limit', '1000')
-        
-        if (filters.searchTerm) {
-          params.append('q', filters.searchTerm)
-        }
-        
-        const url = `${baseUrl}?${params.toString()}`
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          if (data.items && data.items.length > 0) {
-            items.push(...data.items)
-          }
-        }
-      }
-      
-      console.log(`Fetched ${items.length} items using filters`)
-    } else {
-      throw new Error('Pattern must have either a NetSuite saved search ID or filters defined')
-    }
-
-    // Clear existing sync list items if requested
-    if (clearExisting) {
-      const { error: deleteError } = await supabaseClient
+    // Clear existing items if requested
+    if (body.clearExisting) {
+      const { error: clearError } = await supabase
         .from('sync_list')
         .delete()
-        .eq('user_id', user.id)
-        .eq('sync_direction', syncDirection || pattern.sync_direction)
+        .eq('user_id', auth.user.id)
 
-      if (deleteError) {
-        console.error('Error clearing existing items:', deleteError)
-      } else {
-        console.log('Cleared existing sync list items')
+      if (clearError) {
+        console.error('[populate-sync-list] Error clearing sync list:', clearError)
+        return corsJsonHeaders(500, { error: 'database_error', message: 'Failed to clear existing items' })
       }
     }
 
-    // Transform and insert items into sync_list
-    const syncListItems = items.map((item: any) => ({
-      user_id: user.id,
-      netsuite_item_id: item.id || item.internalId,
-      sku: item.itemid || item.sku || item.displayname,
-      product_name: item.displayname || item.name || item.itemid,
-      sync_direction: syncDirection || pattern.sync_direction,
+    // Get products based on pattern filters
+    let productsQuery = supabase
+      .from('products')
+      .select('*')
+      .eq('user_id', auth.user.id)
+
+    // Apply filters from pattern
+    if (pattern.filters) {
+      const filters = pattern.filters
+
+      if (filters.platform) {
+        productsQuery = productsQuery.eq('platform', filters.platform)
+      }
+
+      if (filters.sku) {
+        productsQuery = productsQuery.ilike('sku', `%${filters.sku}%`)
+      }
+
+      if (filters.name) {
+        productsQuery = productsQuery.ilike('name', `%${filters.name}%`)
+      }
+
+      if (filters.is_active !== undefined) {
+        productsQuery = productsQuery.eq('is_active', filters.is_active)
+      }
+    }
+
+    const { data: products, error: productsError } = await productsQuery
+
+    if (productsError) {
+      console.error('[populate-sync-list] Error fetching products:', productsError)
+      return corsJsonHeaders(500, { error: 'database_error', message: 'Failed to fetch products' })
+    }
+
+    if (!products || products.length === 0) {
+      return corsJsonHeaders(200, {
+        success: true,
+        stats: { inserted: 0, updated: 0, failed: 0 },
+        message: 'No products found matching the pattern'
+      })
+    }
+
+    // Prepare sync list items
+    const syncItems = products.map(product => ({
+      user_id: auth.user.id,
+      netsuite_item_id: product.platform === 'netsuite' ? product.platform_product_id : null,
+      shopify_product_id: product.platform === 'shopify' ? product.platform_product_id : null,
+      sku: product.sku,
+      product_name: product.name || product.sku || 'Unknown Product',
+      sync_direction: pattern.sync_direction,
       sync_mode: 'delta',
       is_active: true,
-      metadata: {
-        // Pricing
-        price: item.baseprice || item.price,
-        cost: item.cost,
-        msrp: item.msrp,
-        
-        // Inventory
-        inventory: item.quantityavailable || item.quantity,
-        quantityOnHand: item.quantityonhand,
-        quantityCommitted: item.quantitycommitted,
-        quantityOnOrder: item.quantityonorder,
-        reorderPoint: item.reorderpoint,
-        
-        // Classification
-        subsidiary: item.subsidiary?.name || item.subsidiary?.id,
-        division: item.division?.name || item.division?.id,
-        department: item.department?.name || item.department?.id,
-        class: item.class?.name || item.class?.id,
-        location: item.location?.name || item.location?.id,
-        
-        // Product info
-        manufacturer: item.manufacturer?.name || item.manufacturer,
-        vendor: item.vendor?.name || item.vendor,
-        brand: item.custitem_brand || item.brand,
-        productGroup: item.custitem_product_group || item.productgroup,
-        category: item.custitem_category || item.category,
-        
-        // Status
-        inactive: item.isinactive,
-        itemType: item.itemType || item.type,
-        
-        // Metadata
-        source: 'filter_pattern',
-        pattern_id: patternId,
-        pattern_name: pattern.name,
-        fetched_at: new Date().toISOString(),
-      },
+      priority: 1
     }))
 
-    // Batch insert with upsert logic (update if SKU already exists)
-    let inserted = 0
-    let updated = 0
-    let failed = 0
+    // Insert items (upsert to handle duplicates)
+    const { data: insertedItems, error: insertError } = await supabase
+      .from('sync_list')
+      .upsert(syncItems, {
+        onConflict: 'user_id,netsuite_item_id,shopify_product_id',
+        ignoreDuplicates: false
+      })
+      .select()
 
-    for (const item of syncListItems) {
-      try {
-        // Check if item already exists
-        const { data: existing } = await supabaseClient
-          .from('sync_list')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('sku', item.sku)
-          .single()
-
-        if (existing) {
-          // Update existing item
-          const { error: updateError } = await supabaseClient
-            .from('sync_list')
-            .update({
-              netsuite_item_id: item.netsuite_item_id,
-              product_name: item.product_name,
-              metadata: item.metadata,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existing.id)
-
-          if (updateError) {
-            console.error('Update error:', updateError)
-            failed++
-          } else {
-            updated++
-          }
-        } else {
-          // Insert new item
-          const { error: insertError } = await supabaseClient
-            .from('sync_list')
-            .insert(item)
-
-          if (insertError) {
-            console.error('Insert error:', insertError)
-            failed++
-          } else {
-            inserted++
-          }
-        }
-      } catch (error) {
-        console.error('Error processing item:', error)
-        failed++
-      }
+    if (insertError) {
+      console.error('[populate-sync-list] Error inserting sync items:', insertError)
+      return corsJsonHeaders(500, { error: 'database_error', message: 'Failed to populate sync list' })
     }
 
-    // Update the pattern's last_populated_at timestamp
-    await supabaseClient
+    // Update pattern's last_populated_at
+    await supabase
       .from('saved_search_patterns')
       .update({ last_populated_at: new Date().toISOString() })
-      .eq('id', patternId)
+      .eq('id', body.patternId)
 
-    console.log(`Sync list populated: ${inserted} inserted, ${updated} updated, ${failed} failed`)
+    const stats = {
+      inserted: insertedItems?.length || 0,
+      updated: 0, // Upsert doesn't distinguish between insert/update
+      failed: 0
+    }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Sync list populated successfully`,
-        stats: {
-          total: items.length,
-          inserted,
-          updated,
-          failed,
-        },
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
-    )
+    console.log(`[populate-sync-list] Successfully populated sync list:`, stats)
+
+    return corsJsonHeaders(200, {
+      success: true,
+      stats,
+      message: `Sync list populated with ${stats.inserted} items`
+    })
+
   } catch (error) {
-    console.error('Error:', error)
-    return new Response(
-      JSON.stringify({
-        error: error.message || 'An error occurred',
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      }
-    )
+    console.error('[populate-sync-list] Unexpected error:', error)
+    return corsJsonHeaders(500, { error: 'internal_error', message: 'Populate sync list failed unexpectedly' })
   }
 })
