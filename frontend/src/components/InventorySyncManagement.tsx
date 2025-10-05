@@ -576,7 +576,7 @@ const InventorySyncManagement: React.FC<InventorySyncManagementProps> = ({ sessi
                     >
                       <Option value="all">All Items</Option>
                       <Option value="in_stock">In Stock</Option>
-                      <Option value="low_stock">Low Stock (<10)</Option>
+                      <Option value="low_stock">Low Stock (&lt;10)</Option>
                       <Option value="out_of_stock">Out of Stock</Option>
                     </Select>
                   </Col>

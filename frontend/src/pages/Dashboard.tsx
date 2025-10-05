@@ -662,7 +662,8 @@ export default function Dashboard() {
               </div>
             </Dropdown>
           </div>
-
+        </div>
+        
         {/* Content */}
         <div style={{ flex: 1, padding: '24px', overflow: 'auto' }}>
         {oauthBanner && (
@@ -2572,5 +2573,3 @@ export default function Dashboard() {
     </div>
   )
 }
-
-export default Dashboard

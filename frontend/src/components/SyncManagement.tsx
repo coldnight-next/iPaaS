@@ -87,6 +87,88 @@ export default function SyncManagement() {
   const [scheduleForm] = Form.useForm()
   const [addItemForm] = Form.useForm()
 
+  // Advanced filtering state
+  const [patternsFilters, setPatternsFilters] = useState({
+    status: 'all',
+    direction: 'all',
+    search: ''
+  })
+  const [syncListFilters, setSyncListFilters] = useState({
+    status: 'all',
+    direction: 'all',
+    mode: 'all',
+    search: ''
+  })
+  const [historyFilters, setHistoryFilters] = useState({
+    status: 'all',
+    type: 'all',
+    dateRange: null as [dayjs.Dayjs, dayjs.Dayjs] | null,
+    search: ''
+  })
+  const [scheduleFilters, setScheduleFilters] = useState({
+    status: 'all',
+    direction: 'all',
+    search: ''
+  })
+
+  // Filtered data
+  const filteredPatterns = useMemo(() => {
+    return savedPatterns.filter(pattern => {
+      if (patternsFilters.status !== 'all' && (patternsFilters.status === 'active' ? !pattern.is_active : pattern.is_active)) return false
+      if (patternsFilters.direction !== 'all' && pattern.sync_direction !== patternsFilters.direction) return false
+      if (patternsFilters.search) {
+        const searchLower = patternsFilters.search.toLowerCase()
+        const searchableText = [pattern.name, pattern.description, pattern.sync_direction].join(' ').toLowerCase()
+        if (!searchableText.includes(searchLower)) return false
+      }
+      return true
+    })
+  }, [savedPatterns, patternsFilters])
+
+  const filteredSyncList = useMemo(() => {
+    return syncList.filter(item => {
+      if (syncListFilters.status !== 'all' && item.last_sync_status !== syncListFilters.status) return false
+      if (syncListFilters.direction !== 'all' && item.sync_direction !== syncListFilters.direction) return false
+      if (syncListFilters.mode !== 'all' && item.sync_mode !== syncListFilters.mode) return false
+      if (syncListFilters.search) {
+        const searchLower = syncListFilters.search.toLowerCase()
+        const searchableText = [item.sku, item.product_name, item.sync_direction, item.sync_mode].join(' ').toLowerCase()
+        if (!searchableText.includes(searchLower)) return false
+      }
+      return true
+    })
+  }, [syncList, syncListFilters])
+
+  const filteredHistory = useMemo(() => {
+    return syncHistory.filter(item => {
+      if (historyFilters.status !== 'all' && item.status !== historyFilters.status) return false
+      if (historyFilters.type !== 'all' && item.sync_type !== historyFilters.type) return false
+      if (historyFilters.dateRange) {
+        const itemDate = dayjs(item.started_at)
+        if (itemDate.isBefore(historyFilters.dateRange[0]) || itemDate.isAfter(historyFilters.dateRange[1])) return false
+      }
+      if (historyFilters.search) {
+        const searchLower = historyFilters.search.toLowerCase()
+        const searchableText = [item.sync_type, item.status, item.started_at].join(' ').toLowerCase()
+        if (!searchableText.includes(searchLower)) return false
+      }
+      return true
+    })
+  }, [syncHistory, historyFilters])
+
+  const filteredSchedules = useMemo(() => {
+    return syncSchedules.filter(schedule => {
+      if (scheduleFilters.status !== 'all' && (scheduleFilters.status === 'active' ? !schedule.is_active : schedule.is_active)) return false
+      if (scheduleFilters.direction !== 'all' && schedule.sync_direction !== scheduleFilters.direction) return false
+      if (scheduleFilters.search) {
+        const searchLower = scheduleFilters.search.toLowerCase()
+        const searchableText = [schedule.name, schedule.description, schedule.sync_direction].join(' ').toLowerCase()
+        if (!searchableText.includes(searchLower)) return false
+      }
+      return true
+    })
+  }, [syncSchedules, scheduleFilters])
+
   useEffect(() => {
     if (session) {
       loadSavedPatterns()
@@ -851,9 +933,75 @@ export default function SyncManagement() {
                 Create New Pattern
               </Button>
             </Space>
+
+            {/* Advanced Filters for Patterns */}
+            <Card style={{ marginBottom: 16 }}>
+              <Space wrap>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Status
+                  </label>
+                  <Select
+                    value={patternsFilters.status}
+                    onChange={(value) => setPatternsFilters(prev => ({ ...prev, status: value }))}
+                    style={{ width: '120px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Status</Select.Option>
+                    <Select.Option value="active">Active</Select.Option>
+                    <Select.Option value="inactive">Inactive</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Direction
+                  </label>
+                  <Select
+                    value={patternsFilters.direction}
+                    onChange={(value) => setPatternsFilters(prev => ({ ...prev, direction: value }))}
+                    style={{ width: '140px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Directions</Select.Option>
+                    <Select.Option value="netsuite-to-shopify">NS → Shopify</Select.Option>
+                    <Select.Option value="shopify-to-netsuite">Shopify → NS</Select.Option>
+                    <Select.Option value="bidirectional">Bidirectional</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Search
+                  </label>
+                  <Input
+                    placeholder="Search patterns..."
+                    value={patternsFilters.search}
+                    onChange={(e) => setPatternsFilters(prev => ({ ...prev, search: e.target.value }))}
+                    prefix={<SearchOutlined />}
+                    size="small"
+                    style={{ width: '200px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    &nbsp;
+                  </label>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={() => setPatternsFilters({ status: 'all', direction: 'all', search: '' })}
+                    size="small"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </Space>
+            </Card>
+
             <Table
               columns={patternsColumns}
-              dataSource={savedPatterns}
+              dataSource={filteredPatterns}
               rowKey="id"
               pagination={{ pageSize: 10 }}
             />
@@ -943,6 +1091,88 @@ export default function SyncManagement() {
                 </Button>
               )}
             </Space>
+
+            {/* Advanced Filters for Sync List */}
+            <Card style={{ marginBottom: 16 }}>
+              <Space wrap>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Status
+                  </label>
+                  <Select
+                    value={syncListFilters.status}
+                    onChange={(value) => setSyncListFilters(prev => ({ ...prev, status: value }))}
+                    style={{ width: '120px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Status</Select.Option>
+                    <Select.Option value="success">Success</Select.Option>
+                    <Select.Option value="failed">Failed</Select.Option>
+                    <Select.Option value="pending">Pending</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Direction
+                  </label>
+                  <Select
+                    value={syncListFilters.direction}
+                    onChange={(value) => setSyncListFilters(prev => ({ ...prev, direction: value }))}
+                    style={{ width: '140px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Directions</Select.Option>
+                    <Select.Option value="netsuite_to_shopify">NS → Shopify</Select.Option>
+                    <Select.Option value="shopify_to_netsuite">Shopify → NS</Select.Option>
+                    <Select.Option value="bidirectional">Bidirectional</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Mode
+                  </label>
+                  <Select
+                    value={syncListFilters.mode}
+                    onChange={(value) => setSyncListFilters(prev => ({ ...prev, mode: value }))}
+                    style={{ width: '120px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Modes</Select.Option>
+                    <Select.Option value="delta">Delta</Select.Option>
+                    <Select.Option value="full">Full</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Search
+                  </label>
+                  <Input
+                    placeholder="Search SKU, product..."
+                    value={syncListFilters.search}
+                    onChange={(e) => setSyncListFilters(prev => ({ ...prev, search: e.target.value }))}
+                    prefix={<SearchOutlined />}
+                    size="small"
+                    style={{ width: '200px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    &nbsp;
+                  </label>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={() => setSyncListFilters({ status: 'all', direction: 'all', mode: 'all', search: '' })}
+                    size="small"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </Space>
+            </Card>
             <Table
               rowSelection={{
                 selectedRowKeys,
@@ -954,16 +1184,95 @@ export default function SyncManagement() {
                 ],
               }}
               columns={syncListColumns}
-              dataSource={syncList}
+              dataSource={filteredSyncList}
               rowKey="id"
               pagination={{ pageSize: 20 }}
             />
           </TabPane>
 
           <TabPane tab={<span><HistoryOutlined /> History</span>} key="history">
+            {/* Advanced Filters for History */}
+            <Card style={{ marginBottom: 16 }}>
+              <Space wrap>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Status
+                  </label>
+                  <Select
+                    value={historyFilters.status}
+                    onChange={(value) => setHistoryFilters(prev => ({ ...prev, status: value }))}
+                    style={{ width: '120px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Status</Select.Option>
+                    <Select.Option value="completed">Completed</Select.Option>
+                    <Select.Option value="partial_success">Partial Success</Select.Option>
+                    <Select.Option value="failed">Failed</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Type
+                  </label>
+                  <Select
+                    value={historyFilters.type}
+                    onChange={(value) => setHistoryFilters(prev => ({ ...prev, type: value }))}
+                    style={{ width: '120px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Types</Select.Option>
+                    <Select.Option value="manual">Manual</Select.Option>
+                    <Select.Option value="scheduled">Scheduled</Select.Option>
+                    <Select.Option value="webhook">Webhook</Select.Option>
+                    <Select.Option value="bulk">Bulk</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Date Range
+                  </label>
+                  <DatePicker.RangePicker
+                    value={historyFilters.dateRange}
+                    onChange={(dates) => setHistoryFilters(prev => ({ ...prev, dateRange: dates }))}
+                    size="small"
+                    style={{ width: '240px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Search
+                  </label>
+                  <Input
+                    placeholder="Search history..."
+                    value={historyFilters.search}
+                    onChange={(e) => setHistoryFilters(prev => ({ ...prev, search: e.target.value }))}
+                    prefix={<SearchOutlined />}
+                    size="small"
+                    style={{ width: '200px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    &nbsp;
+                  </label>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={() => setHistoryFilters({ status: 'all', type: 'all', dateRange: null, search: '' })}
+                    size="small"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </Space>
+            </Card>
+
             <Table
               columns={historyColumns}
-              dataSource={syncHistory}
+              dataSource={filteredHistory}
               rowKey="id"
               pagination={{ pageSize: 20 }}
             />
@@ -987,9 +1296,75 @@ export default function SyncManagement() {
                 Create Schedule
               </Button>
             </Space>
+
+            {/* Advanced Filters for Schedules */}
+            <Card style={{ marginBottom: 16 }}>
+              <Space wrap>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Status
+                  </label>
+                  <Select
+                    value={scheduleFilters.status}
+                    onChange={(value) => setScheduleFilters(prev => ({ ...prev, status: value }))}
+                    style={{ width: '120px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Status</Select.Option>
+                    <Select.Option value="active">Active</Select.Option>
+                    <Select.Option value="inactive">Inactive</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Direction
+                  </label>
+                  <Select
+                    value={scheduleFilters.direction}
+                    onChange={(value) => setScheduleFilters(prev => ({ ...prev, direction: value }))}
+                    style={{ width: '140px' }}
+                    size="small"
+                  >
+                    <Select.Option value="all">All Directions</Select.Option>
+                    <Select.Option value="netsuite_to_shopify">NS → Shopify</Select.Option>
+                    <Select.Option value="shopify_to_netsuite">Shopify → NS</Select.Option>
+                    <Select.Option value="bidirectional">Bidirectional</Select.Option>
+                  </Select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    Search
+                  </label>
+                  <Input
+                    placeholder="Search schedules..."
+                    value={scheduleFilters.search}
+                    onChange={(e) => setScheduleFilters(prev => ({ ...prev, search: e.target.value }))}
+                    prefix={<SearchOutlined />}
+                    size="small"
+                    style={{ width: '200px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px' }}>
+                    &nbsp;
+                  </label>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={() => setScheduleFilters({ status: 'all', direction: 'all', search: '' })}
+                    size="small"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </Space>
+            </Card>
+
             <Table
               columns={scheduleColumns}
-              dataSource={syncSchedules}
+              dataSource={filteredSchedules}
               rowKey="id"
               pagination={{ pageSize: 10 }}
             />
