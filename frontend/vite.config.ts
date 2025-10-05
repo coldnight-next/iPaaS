@@ -13,9 +13,6 @@ export default defineConfig({
             if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
               return 'react-vendor'
             }
-            if (id.includes('antd') || id.includes('@ant-design')) {
-              return 'ui-vendor'
-            }
             if (id.includes('@supabase') || id.includes('supabase')) {
               return 'supabase-vendor'
             }
