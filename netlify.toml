@@ -18,7 +18,7 @@
 
 # Environment variables (set these in Netlify dashboard)
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "20.19"
   NPM_VERSION = "10"
 
 # Headers for security and caching
