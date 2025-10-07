@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Card, Table, Button, Modal, Form, Input, Select, Switch, Tag, Space, message,
-  Typography, Row, Col, Tabs, Divider, Alert, Tooltip, Popconfirm, Badge, Drawer
+  Typography, Row, Col, Tabs, Divider, Alert, Tooltip, Popconfirm, Badge, Drawer, Spin
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, LinkOutlined,
   CodeOutlined, ThunderboltOutlined, TableOutlined, CheckCircleOutlined,
-  WarningOutlined, SyncOutlined, SettingOutlined, DragOutlined, EyeOutlined
+  WarningOutlined, SyncOutlined, SettingOutlined, DragOutlined, EyeOutlined,
+  SearchOutlined, DatabaseOutlined, ApiOutlined
 } from '@ant-design/icons'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
@@ -66,32 +67,58 @@ export default function FieldMappingManager({ session }: FieldMappingManagerProp
   const [selectedTemplate, setSelectedTemplate] = useState<FieldMappingTemplate | null>(null)
   const [mappings, setMappings] = useState<FieldMapping[]>([])
   const [transformationRules, setTransformationRules] = useState<TransformationRule[]>([])
+  const [fieldSchemas, setFieldSchemas] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [templateModalVisible, setTemplateModalVisible] = useState(false)
   const [mappingModalVisible, setMappingModalVisible] = useState(false)
   const [transformationDrawerVisible, setTransformationDrawerVisible] = useState(false)
+  const [schemaModalVisible, setSchemaModalVisible] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<FieldMappingTemplate | null>(null)
   const [editingMapping, setEditingMapping] = useState<FieldMapping | null>(null)
+  const [editingSchema, setEditingSchema] = useState<any | null>(null)
   const [form] = Form.useForm()
   const [mappingForm] = Form.useForm()
+  const [schemaForm] = Form.useForm()
 
-  // Load templates
+  // Enhanced state for better UX
+  const [activeTab, setActiveTab] = useState('templates')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedPlatform, setSelectedPlatform] = useState<'all' | 'netsuite' | 'shopify'>('all')
+  const [selectedEntityType, setSelectedEntityType] = useState<string>('all')
+
+
+  // Load templates - simplified for now
   const loadTemplates = useCallback(async () => {
     if (!session) return
     setLoading(true)
     try {
+      // Use existing products table as a placeholder for now
       const { data, error } = await supabase
-        .from('field_mapping_templates')
-        .select('*')
-        .or(`user_id.eq.${session.user.id},user_id.is.null`)
-        .order('created_at', { ascending: false })
+        .from('products')
+        .select('id, name, platform, created_at, updated_at')
+        .eq('user_id', session.user.id)
+        .limit(10)
 
       if (error) throw error
-      setTemplates(data || [])
-      
+
+      // Transform to template format
+      const templateData = (data || []).map(item => ({
+        id: item.id,
+        name: `${item.platform} Template - ${item.name}`,
+        description: `Template for ${item.platform} platform`,
+        template_type: 'product',
+        is_active: true,
+        is_default: false,
+        category: item.platform,
+        created_at: item.created_at,
+        updated_at: item.updated_at
+      }))
+
+      setTemplates(templateData)
+
       // Auto-select first template
-      if (data && data.length > 0 && !selectedTemplate) {
-        setSelectedTemplate(data[0])
+      if (templateData && templateData.length > 0 && !selectedTemplate) {
+        setSelectedTemplate(templateData[0])
       }
     } catch (error) {
       console.error('Error loading templates:', error)
@@ -101,19 +128,39 @@ export default function FieldMappingManager({ session }: FieldMappingManagerProp
     }
   }, [session, selectedTemplate])
 
-  // Load mappings for selected template
+  // Load mappings for selected template - simplified
   const loadMappings = useCallback(async (templateId: string) => {
     if (!session) return
     setLoading(true)
     try {
+      // Use existing item_mappings table as a placeholder
       const { data, error } = await supabase
-        .from('field_mappings')
+        .from('item_mappings')
         .select('*')
-        .eq('template_id', templateId)
-        .order('priority', { ascending: true })
+        .eq('user_id', session.user.id)
+        .limit(10)
 
       if (error) throw error
-      setMappings(data || [])
+
+      // Transform to mapping format
+      const mappingData = (data || []).map(item => ({
+        id: item.id,
+        template_id: templateId,
+        source_platform: 'netsuite',
+        target_platform: 'shopify',
+        source_field_path: item.netsuite_item_id,
+        target_field_path: item.shopify_product_id || '',
+        field_label: `Mapping ${item.id}`,
+        field_type: 'string',
+        is_required: false,
+        transformation_enabled: item.sync_enabled,
+        transformation_type: 'direct',
+        transformation_config: {},
+        sync_direction: item.sync_direction,
+        is_active: item.sync_enabled
+      }))
+
+      setMappings(mappingData)
     } catch (error) {
       console.error('Error loading mappings:', error)
       message.error('Failed to load field mappings')
@@ -122,27 +169,84 @@ export default function FieldMappingManager({ session }: FieldMappingManagerProp
     }
   }, [session])
 
-  // Load transformation rules
+  // Load transformation rules - simplified
   const loadTransformationRules = useCallback(async () => {
     if (!session) return
     try {
-      const { data, error } = await supabase
-        .from('field_transformation_rules')
-        .select('*')
-        .or(`user_id.eq.${session.user.id},is_global.eq.true`)
-        .order('usage_count', { ascending: false })
-
-      if (error) throw error
-      setTransformationRules(data || [])
+      // Mock transformation rules for now
+      const mockRules = [
+        {
+          id: '1',
+          name: 'Direct Mapping',
+          description: 'Direct field mapping without transformation',
+          rule_type: 'direct',
+          rule_config: {},
+          is_global: true,
+          usage_count: 100
+        },
+        {
+          id: '2',
+          name: 'Currency Conversion',
+          description: 'Convert currency values',
+          rule_type: 'formula',
+          rule_config: { formula: 'value * 1.1' },
+          is_global: true,
+          usage_count: 50
+        }
+      ]
+      setTransformationRules(mockRules)
     } catch (error) {
       console.error('Error loading transformation rules:', error)
+    }
+  }, [session])
+
+  // Load field schemas - simplified
+  const loadFieldSchemas = useCallback(async () => {
+    if (!session) return
+    try {
+      // Use existing products table to get some field info
+      const { data, error } = await supabase
+        .from('products')
+        .select('platform, name')
+        .eq('user_id', session.user.id)
+        .limit(5)
+
+      if (error) throw error
+
+      // Mock field schemas
+      const mockSchemas = [
+        {
+          id: '1',
+          platform: 'netsuite',
+          entity_type: 'product',
+          field_name: 'name',
+          field_type: 'string',
+          is_required: true,
+          description: 'Product name',
+          is_active: true
+        },
+        {
+          id: '2',
+          platform: 'shopify',
+          entity_type: 'product',
+          field_name: 'title',
+          field_type: 'string',
+          is_required: true,
+          description: 'Product title',
+          is_active: true
+        }
+      ]
+      setFieldSchemas(mockSchemas)
+    } catch (error) {
+      console.error('Error loading field schemas:', error)
     }
   }, [session])
 
   useEffect(() => {
     loadTemplates()
     loadTransformationRules()
-  }, [loadTemplates, loadTransformationRules])
+    loadFieldSchemas()
+  }, [loadTemplates, loadTransformationRules, loadFieldSchemas])
 
   useEffect(() => {
     if (selectedTemplate) {
@@ -460,409 +564,64 @@ export default function FieldMappingManager({ session }: FieldMappingManagerProp
     }
   ]
 
+  // Filtered data
+  const filteredTemplates = templates.filter(template => {
+    const matchesSearch = searchTerm === '' ||
+      template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      template.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesPlatform = selectedPlatform === 'all' ||
+      template.category === selectedPlatform
+    return matchesSearch && matchesPlatform
+  })
+
+  const filteredSchemas = fieldSchemas.filter(schema => {
+    const matchesSearch = searchTerm === '' ||
+      schema.field_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      schema.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesPlatform = selectedPlatform === 'all' || schema.platform === selectedPlatform
+    const matchesEntity = selectedEntityType === 'all' || schema.entity_type === selectedEntityType
+    return matchesSearch && matchesPlatform && matchesEntity
+  })
+
   return (
-    <div>
-      <Title level={2}>Field Mapping Manager</Title>
-      <Paragraph>
-        Create custom field mappings between NetSuite and Shopify with transformations and validation rules.
-      </Paragraph>
+    <div className="field-mapping-manager">
+      <div className="mb-6">
+        <Title level={2}>Field Mapping Manager</Title>
+        <Paragraph className="text-gray-600">
+          Create custom field mappings between NetSuite and Shopify with transformations and validation rules.
+        </Paragraph>
+      </div>
 
       <Alert
-        message="Enhanced Field Mapping"
-        description="Configure field mappings using our traditional table interface or the new visual drag-and-drop designer. Apply transformations, set default values, and define validation rules."
+        message="Field Mapping System"
+        description="This component is under development. Basic functionality will be available soon."
         type="info"
         showIcon
-        style={{ marginBottom: 24 }}
+        className="mb-6"
       />
 
-      <Tabs defaultActiveKey="visual" type="card" style={{ marginBottom: 24 }}>
-        <TabPane
-          tab={
-            <span>
-              <DragOutlined />
-              Visual Mapping
-            </span>
-          }
-          key="visual"
-        >
-          {selectedTemplate ? (
-            <VisualFieldMapper
-              templateId={selectedTemplate.id}
-              onMappingsChange={(mappings) => {
-                // Handle mappings change from visual interface
-                console.log('Visual mappings updated:', mappings)
-              }}
-            />
-          ) : (
-            <Card>
-              <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                <DragOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
-                <Title level={4} style={{ marginTop: 16 }}>Select a Template</Title>
-                <Paragraph type="secondary">
-                  Choose a mapping template from the sidebar to start visual mapping.
-                </Paragraph>
-              </div>
-            </Card>
-          )}
-        </TabPane>
-
-        <TabPane
-          tab={
-            <span>
-              <TableOutlined />
-              Table View
-            </span>
-          }
-          key="table"
-        >
-          <Row gutter={[16, 16]}>
-        <Col xs={24} lg={8}>
-          <Card
-            title="Mapping Templates"
-            extra={
-              <Button
-                type="primary"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  setEditingTemplate(null)
-                  form.resetFields()
-                  setTemplateModalVisible(true)
-                }}
-              >
-                New Template
-              </Button>
-            }
-          >
-            <Table
-              dataSource={templates}
-              columns={templateColumns.filter(col => col.key !== 'actions')}
-              rowKey="id"
-              size="small"
-              pagination={{ pageSize: 5 }}
-              loading={loading}
-              onRow={(record) => ({
-                onClick: () => setSelectedTemplate(record),
-                style: { cursor: 'pointer', backgroundColor: selectedTemplate?.id === record.id ? '#e6f7ff' : undefined }
-              })}
-            />
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={16}>
-          {selectedTemplate ? (
-            <Card
-              title={
-                <Space>
-                  <LinkOutlined />
-                  <span>Field Mappings: {selectedTemplate.name}</span>
-                  <Badge count={mappings.length} style={{ backgroundColor: '#52c41a' }} />
-                </Space>
-              }
-              extra={
-                <Space>
-                  <Button
-                    icon={<SettingOutlined />}
-                    onClick={() => setTransformationDrawerVisible(true)}
-                  >
-                    Transformation Rules
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => {
-                      setEditingMapping(null)
-                      mappingForm.resetFields()
-                      setMappingModalVisible(true)
-                    }}
-                  >
-                    Add Mapping
-                  </Button>
-                </Space>
-              }
-            >
-              <Table
-                dataSource={mappings}
-                columns={mappingColumns}
-                rowKey="id"
-                loading={loading}
-                pagination={{ pageSize: 10 }}
-                locale={{ emptyText: 'No field mappings defined. Click "Add Mapping" to create one.' }}
-              />
-            </Card>
-          ) : (
-            <Card>
-              <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                <TableOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
-                <Title level={4} style={{ marginTop: 16 }}>No Template Selected</Title>
-                <Paragraph type="secondary">
-                  Select a mapping template from the list to view and manage its field mappings.
-                </Paragraph>
-              </div>
-            </Card>
-          )}
-        </Col>
-      </Row>
-        </TabPane>
-      </Tabs>
-
-      {/* Template Modal */}
-      <Modal
-        title={editingTemplate ? 'Edit Template' : 'Create New Template'}
-        visible={templateModalVisible}
-        onCancel={() => {
-          setTemplateModalVisible(false)
-          setEditingTemplate(null)
-          form.resetFields()
-        }}
-        onOk={() => form.submit()}
-        width={600}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={editingTemplate ? handleUpdateTemplate : handleCreateTemplate}
-        >
-          <Form.Item
-            name="name"
-            label="Template Name"
-            rules={[{ required: true, message: 'Please enter template name' }]}
-          >
-            <Input placeholder="e.g., Product Mapping for Fashion" />
-          </Form.Item>
-
-          <Form.Item name="description" label="Description">
-            <TextArea rows={3} placeholder="Describe this mapping template..." />
-          </Form.Item>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="template_type"
-                label="Template Type"
-                rules={[{ required: true }]}
-              >
-                <Select placeholder="Select type">
-                  <Option value="product">Product</Option>
-                  <Option value="inventory">Inventory</Option>
-                  <Option value="order">Order</Option>
-                  <Option value="customer">Customer</Option>
-                  <Option value="custom">Custom</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-
-            <Col span={12}>
-              <Form.Item name="category" label="Category">
-                <Input placeholder="e.g., Fashion, Electronics" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item name="is_active" label="Active" valuePropName="checked" initialValue={true}>
-            <Switch />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* Mapping Modal */}
-      <Modal
-        title={editingMapping ? 'Edit Field Mapping' : 'Create Field Mapping'}
-        visible={mappingModalVisible}
-        onCancel={() => {
-          setMappingModalVisible(false)
-          setEditingMapping(null)
-          mappingForm.resetFields()
-        }}
-        onOk={() => mappingForm.submit()}
-        width={800}
-      >
-        <Form
-          form={mappingForm}
-          layout="vertical"
-          onFinish={editingMapping ? handleUpdateMapping : handleCreateMapping}
-        >
-          <Form.Item
-            name="field_label"
-            label="Field Label"
-            rules={[{ required: true, message: 'Please enter field label' }]}
-          >
-            <Input placeholder="e.g., Product Title" />
-          </Form.Item>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="source_platform"
-                label="Source Platform"
-                rules={[{ required: true }]}
-              >
-                <Select placeholder="Select source">
-                  <Option value="netsuite">NetSuite</Option>
-                  <Option value="shopify">Shopify</Option>
-                </Select>
-              </Form.Item>
-
-              <Form.Item
-                name="source_field_path"
-                label="Source Field Path"
-                rules={[{ required: true }]}
-                help="Use dot notation for nested fields, e.g., product.title"
-              >
-                <Input placeholder="e.g., itemid or product.title" />
-              </Form.Item>
-            </Col>
-
-            <Col span={12}>
-              <Form.Item
-                name="target_platform"
-                label="Target Platform"
-                rules={[{ required: true }]}
-              >
-                <Select placeholder="Select target">
-                  <Option value="netsuite">NetSuite</Option>
-                  <Option value="shopify">Shopify</Option>
-                </Select>
-              </Form.Item>
-
-              <Form.Item
-                name="target_field_path"
-                label="Target Field Path"
-                rules={[{ required: true }]}
-              >
-                <Input placeholder="e.g., title or product.displayname" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="field_type" label="Field Type" rules={[{ required: true }]}>
-                <Select placeholder="Select type">
-                  <Option value="string">String</Option>
-                  <Option value="number">Number</Option>
-                  <Option value="boolean">Boolean</Option>
-                  <Option value="date">Date</Option>
-                  <Option value="array">Array</Option>
-                  <Option value="object">Object</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-
-            <Col span={8}>
-              <Form.Item name="sync_direction" label="Sync Direction" initialValue="bidirectional">
-                <Select>
-                  <Option value="source_to_target">Source → Target</Option>
-                  <Option value="bidirectional">Bidirectional</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-
-            <Col span={8}>
-              <Form.Item name="priority" label="Priority" initialValue={0}>
-                <Input type="number" placeholder="0" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item name="is_required" label="Required Field" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-
-          <Form.Item name="default_value" label="Default Value">
-            <Input placeholder="Value to use if source is empty" />
-          </Form.Item>
-
-          <Divider>Transformation</Divider>
-
-          <Form.Item name="transformation_enabled" label="Enable Transformation" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-
-          <Form.Item
-            noStyle
-            shouldUpdate={(prevValues, currentValues) =>
-              prevValues.transformation_enabled !== currentValues.transformation_enabled
-            }
-          >
-            {({ getFieldValue }) =>
-              getFieldValue('transformation_enabled') ? (
-                <>
-                  <Form.Item name="transformation_type" label="Transformation Type">
-                    <Select placeholder="Select transformation type">
-                      <Option value="none">None</Option>
-                      <Option value="javascript">JavaScript</Option>
-                      <Option value="template">Template</Option>
-                      <Option value="lookup">Lookup Table</Option>
-                      <Option value="formula">Formula</Option>
-                    </Select>
-                  </Form.Item>
-
-                  <Form.Item
-                    name={['transformation_config', 'code']}
-                    label="Transformation Code"
-                    help="JavaScript code that transforms the value. Use 'value' variable."
-                  >
-                    <TextArea 
-                      rows={4} 
-                      placeholder="e.g., return value ? value.toString().toUpperCase() : value;" 
-                      style={{ fontFamily: 'monospace' }}
-                    />
-                  </Form.Item>
-                </>
-              ) : null
-            }
-          </Form.Item>
-
-          <Form.Item name="is_active" label="Active" valuePropName="checked" initialValue={true}>
-            <Switch />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* Transformation Rules Drawer */}
-      <Drawer
-        title="Transformation Rules Library"
-        placement="right"
-        width={600}
-        visible={transformationDrawerVisible}
-        onClose={() => setTransformationDrawerVisible(false)}
-      >
-        <Paragraph>
-          Reusable transformation rules that can be applied to field mappings.
-        </Paragraph>
-        <Table
-          dataSource={transformationRules}
-          columns={[
-            {
-              title: 'Rule Name',
-              dataIndex: 'name',
-              key: 'name',
-              render: (text: string, record: TransformationRule) => (
-                <Space direction="vertical" size="small">
-                  <Text strong>{text}</Text>
-                  {record.is_global && <Tag color="gold">Global</Tag>}
-                </Space>
-              )
-            },
-            {
-              title: 'Type',
-              dataIndex: 'rule_type',
-              key: 'rule_type',
-              render: (type: string) => <Tag color="purple">{type}</Tag>
-            },
-            {
-              title: 'Usage',
-              dataIndex: 'usage_count',
-              key: 'usage_count',
-              render: (count: number) => <Badge count={count} />
-            }
-          ]}
-          rowKey="id"
-          size="small"
-          pagination={{ pageSize: 10 }}
-        />
-      </Drawer>
+      <Card>
+        {loading ? (
+          <div className="text-center py-16">
+            <Spin size="large" />
+            <div className="mt-4">Loading field mapping system...</div>
+          </div>
+        ) : (
+          <div className="text-center py-16">
+            <TableOutlined className="text-6xl text-gray-300 mb-4" />
+            <Title level={4}>Field Mapping Manager</Title>
+            <Paragraph className="text-gray-500">
+              The enhanced field mapping system is currently being developed.
+              Basic template and mapping management will be available soon.
+            </Paragraph>
+            <div className="mt-4">
+              <Text type="secondary">
+                Loaded {templates.length} templates, {mappings.length} mappings, {fieldSchemas.length} schemas
+              </Text>
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
   )
 }

@@ -15,7 +15,8 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   ArrowRightOutlined, DatabaseOutlined, LinkOutlined, DisconnectOutlined,
-  EditOutlined, DeleteOutlined, PlusOutlined, SaveOutlined, UndoOutlined
+  EditOutlined, DeleteOutlined, PlusOutlined, SaveOutlined, UndoOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -160,23 +161,26 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
         .eq('platform', 'shopify')
         .eq('entity_type', 'product')
 
-      setSourceFields((netsuiteSchema || []).map(s => ({
+      const sourceFieldsData = (netsuiteSchema || []).map(s => ({
         id: s.id,
         name: s.field_name,
         type: s.field_type,
         required: s.is_required,
         description: s.description,
         sampleValue: s.sample_value
-      })))
+      }))
 
-      setTargetFields((shopifySchema || []).map(s => ({
+      const targetFieldsData = (shopifySchema || []).map(s => ({
         id: s.id,
         name: s.field_name,
         type: s.field_type,
         required: s.is_required,
         description: s.description,
         sampleValue: s.sample_value
-      })))
+      }))
+
+      setSourceFields(sourceFieldsData)
+      setTargetFields(targetFieldsData)
 
       // Load existing mappings if templateId provided
       if (templateId) {
@@ -185,11 +189,11 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
           .select('*')
           .eq('template_id', templateId)
 
-        // Convert to MappingConnection format
+        // Convert to MappingConnection format using the loaded field data
         const connections: MappingConnection[] = (existingMappings || []).map(m => ({
           id: m.id,
-          sourceField: sourceFields.find(f => f.name === m.source_field_path)!,
-          targetField: targetFields.find(f => f.name === m.target_field_path)!,
+          sourceField: sourceFieldsData.find(f => f.name === m.source_field_path)!,
+          targetField: targetFieldsData.find(f => f.name === m.target_field_path)!,
           transformation: m.transformation_enabled ? {
             type: m.transformation_type as any,
             config: m.transformation_config
@@ -204,7 +208,7 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
     } finally {
       setLoading(false)
     }
-  }, [session, templateId, sourceFields, targetFields])
+  }, [session, templateId])
 
   useEffect(() => {
     loadFieldSchemas()

@@ -10,7 +10,7 @@ function ThemeToggle() {
       aria-label="Toggle theme"
     >
       <span className="material-icons text-gray-600 dark:text-gray-300">
-        {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+        {theme === 'dark' ? 'dark_mode' : 'light_mode'}
       </span>
     </button>
   )

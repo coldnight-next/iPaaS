@@ -12,7 +12,6 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 const { Title, Text, Paragraph } = Typography
-const { TabPane } = Tabs
 const { RangePicker } = DatePicker
 
 interface SyncQueueItem {
@@ -72,9 +71,10 @@ interface ActiveSyncSession {
 
 interface MonitoringDashboardProps {
   session: Session
+  embedded?: boolean
 }
 
-export default function MonitoringDashboard({ session }: MonitoringDashboardProps) {
+export default function MonitoringDashboard({ session, embedded = false }: MonitoringDashboardProps) {
   const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([])
   const [alerts, setAlerts] = useState<SystemAlert[]>([])
   const [performanceStats, setPerformanceStats] = useState<SyncPerformanceStats | null>(null)
@@ -444,50 +444,52 @@ export default function MonitoringDashboard({ session }: MonitoringDashboardProp
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
-        <Col>
-          <Title level={2}>Real-Time Monitoring Dashboard</Title>
-          <Paragraph>
-            Monitor live sync operations, performance metrics, and system health.
-          </Paragraph>
-        </Col>
-        <Col>
-          <Space>
-            <Select
-              value={refreshInterval}
-              onChange={setRefreshInterval}
-              style={{ width: 120 }}
-              disabled={!autoRefresh}
-            >
-              <Select.Option value={2000}>2 sec</Select.Option>
-              <Select.Option value={5000}>5 sec</Select.Option>
-              <Select.Option value={10000}>10 sec</Select.Option>
-              <Select.Option value={30000}>30 sec</Select.Option>
-            </Select>
-            <Button
-              icon={autoRefresh ? <SyncOutlined spin /> : <ReloadOutlined />}
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              type={autoRefresh ? 'primary' : 'default'}
-            >
-              {autoRefresh ? 'Auto-Refresh ON' : 'Auto-Refresh OFF'}
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => {
-                setLoading(true)
-                Promise.all([
-                  loadSyncQueue(),
-                  loadAlerts(),
-                  loadPerformanceStats(),
-                  loadActiveSessions()
-                ]).finally(() => setLoading(false))
-              }}
-            >
-              Refresh Now
-            </Button>
-          </Space>
-        </Col>
-      </Row>
+      {!embedded && (
+        <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
+          <Col>
+            <Title level={2}>Real-Time Monitoring Dashboard</Title>
+            <Paragraph>
+              Monitor live sync operations, performance metrics, and system health.
+            </Paragraph>
+          </Col>
+          <Col>
+            <Space>
+              <Select
+                value={refreshInterval}
+                onChange={setRefreshInterval}
+                style={{ width: 120 }}
+                disabled={!autoRefresh}
+              >
+                <Select.Option value={2000}>2 sec</Select.Option>
+                <Select.Option value={5000}>5 sec</Select.Option>
+                <Select.Option value={10000}>10 sec</Select.Option>
+                <Select.Option value={30000}>30 sec</Select.Option>
+              </Select>
+              <Button
+                icon={autoRefresh ? <SyncOutlined spin /> : <ReloadOutlined />}
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                type={autoRefresh ? 'primary' : 'default'}
+              >
+                {autoRefresh ? 'Auto-Refresh ON' : 'Auto-Refresh OFF'}
+              </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => {
+                  setLoading(true)
+                  Promise.all([
+                    loadSyncQueue(),
+                    loadAlerts(),
+                    loadPerformanceStats(),
+                    loadActiveSessions()
+                  ]).finally(() => setLoading(false))
+                }}
+              >
+                Refresh Now
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      )}
 
       {/* Alert Banner */}
       {criticalAlertsCount > 0 && (
@@ -659,53 +661,61 @@ export default function MonitoringDashboard({ session }: MonitoringDashboardProp
 
       {/* Tabs for Queue and Alerts */}
       <Card>
-        <Tabs defaultActiveKey="queue">
-          <TabPane tab={<span><ClockCircleOutlined /> Sync Queue ({syncQueue.length})</span>} key="queue">
-            <Table
-              dataSource={syncQueue}
-              columns={queueColumns}
-              rowKey="id"
-              loading={loading}
-              pagination={{ pageSize: 10 }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    description="No sync operations in queue"
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  />
-                )
-              }}
-            />
-          </TabPane>
-          <TabPane
-            tab={
-              <span id="alerts-tab">
-                <BellOutlined />
-                {' '}Alerts ({unacknowledgedAlertsCount}/{alerts.length})
-                {criticalAlertsCount > 0 && (
-                  <Badge count={criticalAlertsCount} style={{ marginLeft: 8 }} />
-                )}
-              </span>
+        <Tabs
+          defaultActiveKey="queue"
+          items={[
+            {
+              key: 'queue',
+              label: <span><ClockCircleOutlined /> Sync Queue ({syncQueue.length})</span>,
+              children: (
+                <Table
+                  dataSource={syncQueue}
+                  columns={queueColumns}
+                  rowKey="id"
+                  loading={loading}
+                  pagination={{ pageSize: 10 }}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        description="No sync operations in queue"
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      />
+                    )
+                  }}
+                />
+              )
+            },
+            {
+              key: 'alerts',
+              label: (
+                <span id="alerts-tab">
+                  <BellOutlined />
+                  {' '}Alerts ({unacknowledgedAlertsCount}/{alerts.length})
+                  {criticalAlertsCount > 0 && (
+                    <Badge count={criticalAlertsCount} style={{ marginLeft: 8 }} />
+                  )}
+                </span>
+              ),
+              children: (
+                <Table
+                  dataSource={alerts}
+                  columns={alertColumns}
+                  rowKey="id"
+                  loading={loading}
+                  pagination={{ pageSize: 10 }}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        description="No active alerts"
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      />
+                    )
+                  }}
+                />
+              )
             }
-            key="alerts"
-          >
-            <Table
-              dataSource={alerts}
-              columns={alertColumns}
-              rowKey="id"
-              loading={loading}
-              pagination={{ pageSize: 10 }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    description="No active alerts"
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  />
-                )
-              }}
-            />
-          </TabPane>
-        </Tabs>
+          ]}
+        />
       </Card>
     </div>
   )

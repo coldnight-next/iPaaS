@@ -285,7 +285,8 @@ async function handleNetSuiteTokenExchange(
   supabase: any,
   redirectWithStatus: (status: 'success' | 'error', message: string) => Response
 ): Promise<Response> {
-  const redirectUri = `${Deno.env.get('OAUTH_FUNCTION_BASE_URL') || ''}/oauth-callback`
+  const fallbackFunctionsBase = `${(Deno.env.get('SUPABASE_URL') || 'http://localhost:54321').replace(/\/$/, '')}/functions/v1`
+  const redirectUri = `${Deno.env.get('OAUTH_FUNCTION_BASE_URL') || fallbackFunctionsBase}/oauth-callback`
   
   console.log('[oauth-callback] NetSuite token exchange params:', {
     accountId,
@@ -295,7 +296,8 @@ async function handleNetSuiteTokenExchange(
 
   // NetSuite OAuth 2.0 token endpoint - must use account-specific URL
   // Format: https://{accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token
-  const tokenEndpoint = `https://${accountId.toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`
+  // Note: accountId should be the full NetSuite account ID without modification
+  const tokenEndpoint = `https://${accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`
   console.log('[oauth-callback] Token endpoint:', tokenEndpoint)
   
   const tokenResponse = await fetch(tokenEndpoint, {

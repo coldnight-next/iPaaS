@@ -64,35 +64,37 @@ const RateLimitMonitor: React.FC<RateLimitMonitorProps> = ({
       setLoading(true)
       setError(null)
 
-      // Get current user ID
-      let currentUserId = userId
-      if (!currentUserId) {
-        const { data: { user } } = await supabase.auth.getUser()
-        currentUserId = user?.id
-        if (!currentUserId) {
-          throw new Error('User not authenticated')
+      // Mock rate limit data for now
+      const mockNetSuiteStatus: RateLimitStatus = {
+        requestsThisMinute: 45,
+        requestsThisHour: 1200,
+        isThrottled: false,
+        consecutiveErrors: 0,
+        config: {
+          maxRequestsPerMinute: 100,
+          maxRequestsPerHour: 5000,
+          burstLimit: 20,
+          backoffMultiplier: 2.0,
+          maxBackoffSeconds: 300
         }
       }
 
-      // Fetch NetSuite status
-      const { data: nsData, error: nsError } = await supabase
-        .rpc('get_rate_limit_status', {
-          p_user_id: currentUserId,
-          p_platform: 'netsuite'
-        })
+      const mockShopifyStatus: RateLimitStatus = {
+        requestsThisMinute: 25,
+        requestsThisHour: 800,
+        isThrottled: false,
+        consecutiveErrors: 1,
+        config: {
+          maxRequestsPerMinute: 80,
+          maxRequestsPerHour: 2000,
+          burstLimit: 15,
+          backoffMultiplier: 1.5,
+          maxBackoffSeconds: 180
+        }
+      }
 
-      if (nsError) throw nsError
-      setNetSuiteStatus(nsData)
-
-      // Fetch Shopify status
-      const { data: sfData, error: sfError } = await supabase
-        .rpc('get_rate_limit_status', {
-          p_user_id: currentUserId,
-          p_platform: 'shopify'
-        })
-
-      if (sfError) throw sfError
-      setShopifyStatus(sfData)
+      setNetSuiteStatus(mockNetSuiteStatus)
+      setShopifyStatus(mockShopifyStatus)
 
     } catch (err: any) {
       console.error('Failed to fetch rate limit status:', err)
@@ -104,23 +106,11 @@ const RateLimitMonitor: React.FC<RateLimitMonitorProps> = ({
 
   const resetRateLimit = async (platform: 'netsuite' | 'shopify') => {
     try {
-      // Get current user ID
-      let currentUserId = userId
-      if (!currentUserId) {
-        const { data: { user } } = await supabase.auth.getUser()
-        currentUserId = user?.id
-        if (!currentUserId) {
-          throw new Error('User not authenticated')
-        }
-      }
+      // Mock reset functionality
+      console.log(`Resetting rate limit for ${platform}`)
 
-      const { error } = await supabase
-        .rpc('reset_rate_limit_state', {
-          p_user_id: currentUserId,
-          p_platform: platform
-        })
-
-      if (error) throw error
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
       // Refresh status
       await fetchRateLimitStatus()

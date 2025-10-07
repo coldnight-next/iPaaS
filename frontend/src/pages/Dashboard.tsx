@@ -2428,7 +2428,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {activeTab !== 'dashboard' && activeTab !== 'connections' && activeTab !== 'setup-wizard' && activeTab !== 'sync-profiles' && !activeTab.startsWith('admin') && activeTab !== 'products' && activeTab !== 'inventory' && activeTab !== 'orders' && activeTab !== 'mappings' && activeTab !== 'sync-scheduling' && activeTab !== 'sync-history' && activeTab !== 'sync-management' && activeTab !== 'sync-queue' && (
+        {activeTab !== 'dashboard' && activeTab !== 'connections' && activeTab !== 'setup-wizard' && activeTab !== 'sync-profiles' && !activeTab.startsWith('admin') && activeTab !== 'products' && activeTab !== 'inventory' && activeTab !== 'orders' && activeTab !== 'mappings' && activeTab !== 'sync-scheduling' && activeTab !== 'sync-history' && activeTab !== 'sync-management' && activeTab !== 'sync-queue' && activeTab !== 'monitoring' && (
           <Card>
             <Typography.Title level={4} style={{ marginBottom: '16px' }}>
               {activeTab.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -2451,7 +2451,7 @@ export default function Dashboard() {
 
             <Row gutter={[16, 16]}>
               <Col xs={24} lg={12}>
-                <MonitoringDashboard />
+                <MonitoringDashboard session={session} embedded={true} />
               </Col>
               <Col xs={24} lg={12}>
                 <RateLimitMonitor showConfig={true} />

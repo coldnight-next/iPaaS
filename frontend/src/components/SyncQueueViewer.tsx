@@ -13,7 +13,7 @@ import {
   Badge,
   Avatar,
   Dropdown,
-  Menu
+  Statistic
 } from 'antd'
 import {
   SyncOutlined,
@@ -29,14 +29,16 @@ import {
   MoreOutlined
 } from '@ant-design/icons'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 import dayjs from 'dayjs'
 import type { RangePickerProps } from 'antd/es/date-picker'
 
 interface SyncQueueItem {
   id: string
+  user_id: string
   sync_type: 'manual' | 'scheduled' | 'webhook' | 'bulk'
   direction: 'netsuite_to_shopify' | 'shopify_to_netsuite' | 'bidirectional'
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'partial_success'
   items_processed: number
   items_succeeded: number
   items_failed: number
@@ -49,6 +51,7 @@ interface SyncQueueItem {
 }
 
 const SyncQueueViewer: React.FC = () => {
+  const { session } = useAuth()
   const [queueItems, setQueueItems] = useState<SyncQueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
@@ -61,11 +64,14 @@ const SyncQueueViewer: React.FC = () => {
 
   // Fetch sync queue data
   const fetchQueueData = async () => {
+    if (!session) return
+
     setLoading(true)
     try {
       const { data, error } = await supabase
         .from('sync_logs')
         .select('*')
+        .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(100)
 
@@ -79,24 +85,26 @@ const SyncQueueViewer: React.FC = () => {
   }
 
   useEffect(() => {
-    fetchQueueData()
+    if (session) {
+      fetchQueueData()
 
-    // Set up real-time subscription
-    const subscription = supabase
-      .channel('sync_logs_changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'sync_logs' },
-        (payload) => {
-          console.log('Sync log change:', payload)
-          fetchQueueData() // Refresh data on any change
-        }
-      )
-      .subscribe()
+      // Set up real-time subscription
+      const subscription = supabase
+        .channel('sync_logs_changes')
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'sync_logs' },
+          (payload) => {
+            console.log('Sync log change:', payload)
+            fetchQueueData() // Refresh data on any change
+          }
+        )
+        .subscribe()
 
-    return () => {
-      subscription.unsubscribe()
+      return () => {
+        subscription.unsubscribe()
+      }
     }
-  }, [])
+  }, [session])
 
   // Filter and search logic
   const filteredItems = useMemo(() => {
@@ -143,9 +151,10 @@ const SyncQueueViewer: React.FC = () => {
     const pending = filteredItems.filter(item => item.status === 'pending').length
     const running = filteredItems.filter(item => item.status === 'running').length
     const completed = filteredItems.filter(item => item.status === 'completed').length
+    const partialSuccess = filteredItems.filter(item => item.status === 'partial_success').length
     const failed = filteredItems.filter(item => item.status === 'failed').length
 
-    return { total, pending, running, completed, failed }
+    return { total, pending, running, completed, partialSuccess, failed }
   }, [filteredItems])
 
   const getStatusIcon = (status: string) => {
@@ -156,6 +165,8 @@ const SyncQueueViewer: React.FC = () => {
         return <SyncOutlined spin style={{ color: '#1890ff' }} />
       case 'completed':
         return <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      case 'partial_success':
+        return <CheckCircleOutlined style={{ color: '#faad14' }} />
       case 'failed':
         return <CloseCircleOutlined style={{ color: '#f5222d' }} />
       case 'cancelled':
@@ -173,6 +184,8 @@ const SyncQueueViewer: React.FC = () => {
         return 'blue'
       case 'completed':
         return 'green'
+      case 'partial_success':
+        return 'lime'
       case 'failed':
         return 'red'
       case 'cancelled':
@@ -287,6 +300,7 @@ const SyncQueueViewer: React.FC = () => {
         { text: 'Pending', value: 'pending' },
         { text: 'Running', value: 'running' },
         { text: 'Completed', value: 'completed' },
+        { text: 'Partial Success', value: 'partial_success' },
         { text: 'Failed', value: 'failed' },
         { text: 'Cancelled', value: 'cancelled' }
       ],
@@ -409,6 +423,14 @@ const SyncQueueViewer: React.FC = () => {
         </Card>
         <Card size="small" style={{ minWidth: '120px' }}>
           <Statistic
+            title="Partial Success"
+            value={stats.partialSuccess}
+            valueStyle={{ color: '#faad14' }}
+            prefix={<CheckCircleOutlined />}
+          />
+        </Card>
+        <Card size="small" style={{ minWidth: '120px' }}>
+          <Statistic
             title="Failed"
             value={stats.failed}
             valueStyle={{ color: stats.failed > 0 ? '#f5222d' : undefined }}
@@ -434,6 +456,7 @@ const SyncQueueViewer: React.FC = () => {
               <Select.Option value="pending">Pending</Select.Option>
               <Select.Option value="running">Running</Select.Option>
               <Select.Option value="completed">Completed</Select.Option>
+              <Select.Option value="partial_success">Partial Success</Select.Option>
               <Select.Option value="failed">Failed</Select.Option>
               <Select.Option value="cancelled">Cancelled</Select.Option>
             </Select>
