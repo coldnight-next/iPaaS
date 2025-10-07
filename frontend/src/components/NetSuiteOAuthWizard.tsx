@@ -70,11 +70,23 @@ export const NetSuiteOAuthWizard: React.FC<NetSuiteOAuthWizardProps> = ({
       setError(null);
       setCurrentStep(2);
 
-      // Get current user
+      // Get current user and refresh session if needed
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
+
+      if (sessionError) {
+        throw new Error('Session error. Please refresh the page and try again.');
+      }
+
+      if (!session) {
         throw new Error('You must be logged in to connect NetSuite');
+      }
+
+      // Check if session is expired and try to refresh
+      if (session.expires_at && new Date(session.expires_at * 1000) < new Date()) {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !refreshData.session) {
+          throw new Error('Session expired. Please log in again.');
+        }
       }
 
       // Call OAuth start endpoint
@@ -95,7 +107,18 @@ export const NetSuiteOAuthWizard: React.FC<NetSuiteOAuthWizardProps> = ({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        if (response.status === 401) {
+          throw new Error('Session expired. Please refresh the page and try again.');
+        }
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = { message: await response.text() };
+        }
+        if (errorData.message && errorData.message.includes('Missing authorization header')) {
+          throw new Error('Session expired. Please refresh the page and try again.');
+        }
         throw new Error(errorData.message || 'Failed to initiate NetSuite OAuth');
       }
 

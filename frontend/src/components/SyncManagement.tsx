@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { Card, Table, Button, Space, Tag, Modal, Form, Input, Select, message, Drawer, Tabs, Statistic, Row, Col, Switch, Popconfirm, Badge, Typography, Tooltip, Alert } from 'antd'
-import { SaveOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, FilterOutlined, ClockCircleOutlined, ThunderboltOutlined, ReloadOutlined } from '@ant-design/icons'
+import { useState, useEffect, useMemo } from 'react'
+import { Card, Table, Button, Space, Tag, Modal, Form, Input, Select, message, Drawer, Tabs, Statistic, Row, Col, Switch, Popconfirm, Badge, Typography, Tooltip, Alert, DatePicker } from 'antd'
+import { SaveOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, FilterOutlined, ClockCircleOutlined, ThunderboltOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import EnhancedProductSearch from './EnhancedProductSearch'
@@ -109,6 +110,21 @@ export default function SyncManagement() {
     status: 'all',
     direction: 'all',
     search: ''
+  })
+
+  // NetSuite entity filters state
+  const [netsuiteEntities, setNetsuiteEntities] = useState({
+    subsidiaries: [] as Array<{ internalId: string; name: string }>,
+    divisions: [] as Array<{ internalId: string; name: string }>,
+    brands: [] as Array<{ internalId: string; name: string }>,
+    productGroups: [] as Array<{ internalId: string; name: string }>
+  })
+  const [loadingEntities, setLoadingEntities] = useState(false)
+  const [selectedEntities, setSelectedEntities] = useState({
+    subsidiary: '',
+    division: '',
+    brand: '',
+    productGroup: ''
   })
 
   // Filtered data
@@ -245,6 +261,59 @@ export default function SyncManagement() {
       setSyncSchedules(data || [])
     } catch (error) {
       console.error('Error loading sync schedules:', error)
+    }
+  }
+
+  const loadNetsuiteEntities = async () => {
+    if (!session) return
+
+    setLoadingEntities(true)
+    try {
+      const entityTypes = ['subsidiaries', 'divisions', 'brands', 'productGroups']
+      const results = await Promise.allSettled(
+        entityTypes.map(async (entityType) => {
+          const response = await fetch(`${FUNCTIONS_BASE}/get-netsuite-entities?entityType=${entityType}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`
+            }
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.message || `Failed to load ${entityType}`)
+          }
+
+          const data = await response.json()
+          return { entityType, entities: data.entities || [] }
+        })
+      )
+
+      const newEntities = {
+        subsidiaries: [] as Array<{ internalId: string; name: string }>,
+        divisions: [] as Array<{ internalId: string; name: string }>,
+        brands: [] as Array<{ internalId: string; name: string }>,
+        productGroups: [] as Array<{ internalId: string; name: string }>
+      }
+
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          const { entityType, entities } = result.value
+          newEntities[entityType as keyof typeof newEntities] = entities
+        } else {
+          console.error(`Failed to load ${result.reason}`)
+          message.warning(`Failed to load some NetSuite entities: ${result.reason}`)
+        }
+      })
+
+      setNetsuiteEntities(newEntities)
+      message.success('NetSuite entities loaded successfully!')
+    } catch (error: any) {
+      console.error('Error loading NetSuite entities:', error)
+      message.error('Failed to load NetSuite entities: ' + error.message)
+    } finally {
+      setLoadingEntities(false)
     }
   }
 
@@ -1008,6 +1077,143 @@ export default function SyncManagement() {
           </TabPane>
 
           <TabPane tab={<span><SyncOutlined /> Sync List ({syncList.length})</span>} key="synclist">
+            {/* NetSuite Connection Test */}
+            <Card style={{ marginBottom: 16 }}>
+              <Title level={4} style={{ marginBottom: 16 }}>NetSuite Connection Test</Title>
+              <Alert
+                message="Test NetSuite Connection"
+                description="Load NetSuite entities (divisions, subsidiaries, brands, product groups) to verify your connection is working properly."
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<ReloadOutlined />}
+                  onClick={loadNetsuiteEntities}
+                  loading={loadingEntities}
+                >
+                  Load NetSuite Entities
+                </Button>
+                {Object.values(netsuiteEntities).some(arr => arr.length > 0) && (
+                  <Button
+                    onClick={() => {
+                      setNetsuiteEntities({
+                        subsidiaries: [],
+                        divisions: [],
+                        brands: [],
+                        productGroups: []
+                      })
+                      setSelectedEntities({
+                        subsidiary: '',
+                        division: '',
+                        brand: '',
+                        productGroup: ''
+                      })
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </Space>
+
+              {/* Entity Dropdowns */}
+              {(netsuiteEntities.subsidiaries.length > 0 ||
+                netsuiteEntities.divisions.length > 0 ||
+                netsuiteEntities.brands.length > 0 ||
+                netsuiteEntities.productGroups.length > 0) && (
+                <div style={{ marginTop: 16 }}>
+                  <Row gutter={16}>
+                    <Col span={6}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                          Subsidiary ({netsuiteEntities.subsidiaries.length})
+                        </label>
+                        <Select
+                          placeholder="Select subsidiary"
+                          value={selectedEntities.subsidiary}
+                          onChange={(value) => setSelectedEntities(prev => ({ ...prev, subsidiary: value }))}
+                          style={{ width: '100%' }}
+                          size="small"
+                          allowClear
+                        >
+                          {netsuiteEntities.subsidiaries.map(entity => (
+                            <Select.Option key={entity.internalId} value={entity.internalId}>
+                              {entity.name}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </div>
+                    </Col>
+                    <Col span={6}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                          Division ({netsuiteEntities.divisions.length})
+                        </label>
+                        <Select
+                          placeholder="Select division"
+                          value={selectedEntities.division}
+                          onChange={(value) => setSelectedEntities(prev => ({ ...prev, division: value }))}
+                          style={{ width: '100%' }}
+                          size="small"
+                          allowClear
+                        >
+                          {netsuiteEntities.divisions.map(entity => (
+                            <Select.Option key={entity.internalId} value={entity.internalId}>
+                              {entity.name}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </div>
+                    </Col>
+                    <Col span={6}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                          Brand ({netsuiteEntities.brands.length})
+                        </label>
+                        <Select
+                          placeholder="Select brand"
+                          value={selectedEntities.brand}
+                          onChange={(value) => setSelectedEntities(prev => ({ ...prev, brand: value }))}
+                          style={{ width: '100%' }}
+                          size="small"
+                          allowClear
+                        >
+                          {netsuiteEntities.brands.map(entity => (
+                            <Select.Option key={entity.internalId} value={entity.internalId}>
+                              {entity.name}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </div>
+                    </Col>
+                    <Col span={6}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                          Product Group ({netsuiteEntities.productGroups.length})
+                        </label>
+                        <Select
+                          placeholder="Select product group"
+                          value={selectedEntities.productGroup}
+                          onChange={(value) => setSelectedEntities(prev => ({ ...prev, productGroup: value }))}
+                          style={{ width: '100%' }}
+                          size="small"
+                          allowClear
+                        >
+                          {netsuiteEntities.productGroups.map(entity => (
+                            <Select.Option key={entity.internalId} value={entity.internalId}>
+                              {entity.name}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </div>
+                    </Col>
+                  </Row>
+                </div>
+              )}
+            </Card>
+
             <Row gutter={16} style={{ marginBottom: 16 }}>
               <Col span={6}>
                 <Card>

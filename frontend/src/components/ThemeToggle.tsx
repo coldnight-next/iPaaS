@@ -1,26 +1,18 @@
-import React from 'react'
-import { Button, Tooltip } from 'antd'
-import { MoonOutlined, SunOutlined } from '@ant-design/icons'
-import { useTheme } from '../contexts/ThemeContext'
+import { useTheme } from '../hooks/useTheme'
 
-const ThemeToggle: React.FC = () => {
-  const { isDark, toggleTheme } = useTheme()
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme()
 
   return (
-    <Tooltip title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
-      <Button
-        type="text"
-        icon={isDark ? <SunOutlined /> : <MoonOutlined />}
-        onClick={toggleTheme}
-        size="large"
-        style={{
-          color: 'inherit',
-          border: 'none',
-          boxShadow: 'none',
-        }}
-        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      />
-    </Tooltip>
+    <button
+      onClick={toggleTheme}
+      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+      aria-label="Toggle theme"
+    >
+      <span className="material-icons text-gray-600 dark:text-gray-300">
+        {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+      </span>
+    </button>
   )
 }
 

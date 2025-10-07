@@ -55,13 +55,18 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     })
 
     socket.on('disconnect', (reason) => {
-      console.log('[WebSocket] Disconnected:', reason)
+      if (import.meta.env.DEV) {
+        console.log('[WebSocket] Disconnected:', reason)
+      }
       setIsConnected(false)
       setConnectionStatus('disconnected')
     })
 
     socket.on('connect_error', (error) => {
-      console.error('[WebSocket] Connection error:', error)
+      // Only log WebSocket errors in development, not production
+      if (import.meta.env.DEV) {
+        console.warn('[WebSocket] Connection error (this is normal if realtime is not enabled):', error.message)
+      }
       setConnectionStatus('error')
     })
 
@@ -72,7 +77,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     })
 
     socket.on('reconnect_error', (error) => {
-      console.error('[WebSocket] Reconnection error:', error)
+      if (import.meta.env.DEV) {
+        console.warn('[WebSocket] Reconnection error (this is normal if realtime is not enabled):', error.message)
+      }
       setConnectionStatus('error')
     })
 

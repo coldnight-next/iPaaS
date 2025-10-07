@@ -4,6 +4,13 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    global: 'globalThis',
+    process: {
+      env: {},
+      versions: {}
+    }
+  },
   build: {
     rollupOptions: {
       output: {
@@ -46,7 +53,7 @@ export default defineConfig({
     // Optimize chunk size
     chunkSizeWarningLimit: 800,
     // Enable source maps for production debugging
-    sourcemap: false,
+    sourcemap: true,
     // Minify for better performance
     minify: 'terser',
     terserOptions: {

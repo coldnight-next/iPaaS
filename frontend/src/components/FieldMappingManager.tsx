@@ -6,7 +6,7 @@ import {
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, LinkOutlined,
   CodeOutlined, ThunderboltOutlined, TableOutlined, CheckCircleOutlined,
-  WarningOutlined, SyncOutlined, SettingOutlined, DragOutlined
+  WarningOutlined, SyncOutlined, SettingOutlined, DragOutlined, EyeOutlined
 } from '@ant-design/icons'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
@@ -866,6 +866,3 @@ export default function FieldMappingManager({ session }: FieldMappingManagerProp
     </div>
   )
 }
-
-// Missing import
-import { EyeOutlined } from '@ant-design/icons'

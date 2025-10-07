@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
+import { useTheme } from './hooks/useTheme'
 import { Spin } from 'antd'
 import ProtectedRoute from './components/ProtectedRoute'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -12,6 +13,9 @@ const Signup = lazy(() => import('./pages/Signup'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+
+// Temporary test component
+const TransformationTest = lazy(() => import('./components/TransformationEngineTest'))
 
 // Loading component for Suspense fallback
 const PageLoader = () => (
@@ -27,6 +31,7 @@ const PageLoader = () => (
 
 function App() {
   const { user, loading } = useAuth()
+  const { theme } = useTheme()
 
   if (loading) {
     return (
@@ -44,9 +49,10 @@ function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
+    <div className={theme === 'dark' ? 'dark' : ''}>
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
           {/* Public auth routes - redirect to dashboard if already logged in */}
           <Route
             path="/auth/login"
@@ -59,6 +65,9 @@ function App() {
           <Route path="/auth/forgot-password" element={<ForgotPassword />} />
           <Route path="/auth/reset-password" element={<ResetPassword />} />
           <Route path="/auth/callback" element={<Navigate to="/dashboard" replace />} />
+
+          {/* Temporary test route */}
+          <Route path="/test-transformation" element={<TransformationTest />} />
 
           {/* Protected dashboard route */}
           <Route
@@ -78,6 +87,7 @@ function App() {
         </Routes>
       </Suspense>
     </ErrorBoundary>
+    </div>
   )
 }
 

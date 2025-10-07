@@ -214,6 +214,10 @@ create policy "Users can update their own connections" on connections
 create policy "Users can delete their own connections" on connections
   for delete using (auth.uid() = user_id);
 
+-- Service role policy for OAuth callbacks (bypasses RLS for oauth_state lookups)
+create policy "Service role can access connections for OAuth" on connections
+  for all using (auth.role() = 'service_role');
+
 -- RLS policies for products
 create policy "Users can view their own products" on products
   for select using (auth.uid() = user_id);

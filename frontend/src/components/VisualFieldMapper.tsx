@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Card, Button, Space, Typography, message, Modal, Input, Select, Tag,
   Row, Col, Tooltip, Alert, Spin, Divider
 } from 'antd'
 import {
-  DndContext, DragOverlay, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
-  DragStartEvent, DragEndEvent, DragOverEvent
+  DndContext, DragOverlay, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors
 } from '@dnd-kit/core'
 import {
   arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy
@@ -130,6 +129,9 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
   const [draggedField, setDraggedField] = useState<FieldSchema | null>(null)
   const [selectedMapping, setSelectedMapping] = useState<MappingConnection | null>(null)
   const [transformationModalVisible, setTransformationModalVisible] = useState(false)
+  const [previewData, setPreviewData] = useState<any>(null)
+  const [showPreview, setShowPreview] = useState(false)
+  const [autoSuggestions, setAutoSuggestions] = useState<MappingConnection[]>([])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -208,8 +210,98 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
     loadFieldSchemas()
   }, [loadFieldSchemas])
 
+  // Generate auto-suggestions based on field names and types
+  const generateAutoSuggestions = useCallback(() => {
+    const suggestions: MappingConnection[] = []
+
+    sourceFields.forEach(sourceField => {
+      targetFields.forEach(targetField => {
+        // Exact name match
+        if (sourceField.name.toLowerCase() === targetField.name.toLowerCase()) {
+          suggestions.push({
+            id: `auto-${sourceField.id}-${targetField.id}`,
+            sourceField,
+            targetField,
+            transformation: { type: 'direct' }
+          })
+        }
+        // Similar names (contains)
+        else if (sourceField.name.toLowerCase().includes(targetField.name.toLowerCase()) ||
+                 targetField.name.toLowerCase().includes(sourceField.name.toLowerCase())) {
+          suggestions.push({
+            id: `auto-${sourceField.id}-${targetField.id}`,
+            sourceField,
+            targetField,
+            transformation: { type: 'direct' }
+          })
+        }
+        // Same data type
+        else if (sourceField.type === targetField.type) {
+          suggestions.push({
+            id: `auto-${sourceField.id}-${targetField.id}`,
+            sourceField,
+            targetField,
+            transformation: { type: 'direct' }
+          })
+        }
+      })
+    })
+
+    // Remove duplicates and existing mappings
+    const uniqueSuggestions = suggestions.filter(suggestion => {
+      return !mappings.some(mapping =>
+        mapping.sourceField.id === suggestion.sourceField.id &&
+        mapping.targetField.id === suggestion.targetField.id
+      )
+    })
+
+    setAutoSuggestions(uniqueSuggestions.slice(0, 10)) // Limit to top 10 suggestions
+  }, [sourceFields, targetFields, mappings])
+
+  useEffect(() => {
+    if (sourceFields.length > 0 && targetFields.length > 0) {
+      generateAutoSuggestions()
+    }
+  }, [sourceFields, targetFields, generateAutoSuggestions])
+
+  // Generate preview data for transformations
+  const generatePreviewData = useCallback(async () => {
+    if (mappings.length === 0) return
+
+    try {
+      // Create sample data based on source field types
+      const sampleInput: any = {}
+      sourceFields.forEach(field => {
+        switch (field.type.toLowerCase()) {
+          case 'string':
+            sampleInput[field.name] = `Sample ${field.name}`
+            break
+          case 'number':
+            sampleInput[field.name] = Math.floor(Math.random() * 1000) + 1
+            break
+          case 'boolean':
+            sampleInput[field.name] = Math.random() > 0.5
+            break
+          case 'date':
+            sampleInput[field.name] = new Date().toISOString()
+            break
+          default:
+            sampleInput[field.name] = `Sample ${field.type}`
+        }
+      })
+
+      setPreviewData(sampleInput)
+    } catch (error) {
+      console.error('Error generating preview data:', error)
+    }
+  }, [mappings, sourceFields])
+
+  useEffect(() => {
+    generatePreviewData()
+  }, [generatePreviewData])
+
   // Handle drag start
-  const handleDragStart = (event: DragStartEvent) => {
+  const handleDragStart = (event: any) => {
     const { active } = event
     const [platform, fieldId] = active.id.toString().split('-')
     const fields = platform === 'source' ? sourceFields : targetFields
@@ -218,7 +310,7 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
   }
 
   // Handle drag over
-  const handleDragOver = (event: DragOverEvent) => {
+  const handleDragOver = (event: any) => {
     const { active, over } = event
     if (!over) return
 
@@ -233,7 +325,7 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
   }
 
   // Handle drag end
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = (event: any) => {
     const { active, over } = event
     setDraggedField(null)
 
@@ -288,6 +380,23 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
     message.success('Mapping removed')
   }
 
+  // Apply auto-suggestion
+  const applyAutoSuggestion = (suggestion: MappingConnection) => {
+    const newMappings = [...mappings, suggestion]
+    setMappings(newMappings)
+    onMappingsChange?.(newMappings)
+    message.success(`Auto-mapped ${suggestion.sourceField.name} → ${suggestion.targetField.name}`)
+  }
+
+  // Apply all auto-suggestions
+  const applyAllAutoSuggestions = () => {
+    const newMappings = [...mappings, ...autoSuggestions]
+    setMappings(newMappings)
+    onMappingsChange?.(newMappings)
+    setAutoSuggestions([])
+    message.success(`Applied ${autoSuggestions.length} auto-suggestions`)
+  }
+
   // Edit transformation
   const editTransformation = (mapping: MappingConnection) => {
     setSelectedMapping(mapping)
@@ -326,19 +435,95 @@ export default function VisualFieldMapper({ templateId, onMappingsChange }: Visu
   return (
     <div className="visual-field-mapper">
       <div className="mb-6">
-        <Title level={4}>Visual Field Mapping</Title>
-        <Text type="secondary">
-          Drag fields from the source platform to connect them with target platform fields
-        </Text>
+        <div className="flex items-center justify-between">
+          <div>
+            <Title level={4}>Visual Field Mapping</Title>
+            <Text type="secondary">
+              Drag fields from the source platform to connect them with target platform fields
+            </Text>
+          </div>
+          <Button
+            type="default"
+            icon={<ThunderboltOutlined />}
+            onClick={() => setShowPreview(!showPreview)}
+          >
+            {showPreview ? 'Hide Preview' : 'Show Preview'}
+          </Button>
+        </div>
       </div>
 
       <Alert
         message="How to Use"
-        description="Drag fields from the left panel to the right panel to create mappings. Click the transformation icon to add data transformations."
+        description="Drag fields from the left panel to the right panel to create mappings. Click the transformation icon to add data transformations. Use auto-suggestions for quick mapping."
         type="info"
         showIcon
         className="mb-6"
       />
+
+      {/* Auto-Suggestions Panel */}
+      {autoSuggestions.length > 0 && (
+        <Card title="🤖 Auto-Suggestions" className="mb-6" size="small">
+          <div className="flex items-center justify-between mb-3">
+            <Text type="secondary">
+              Found {autoSuggestions.length} potential field mappings based on names and types
+            </Text>
+            <Button
+              type="primary"
+              size="small"
+              onClick={applyAllAutoSuggestions}
+              icon={<ThunderboltOutlined />}
+            >
+              Apply All
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {autoSuggestions.slice(0, 6).map(suggestion => (
+              <div key={suggestion.id} className="flex items-center justify-between p-2 border rounded bg-gray-50">
+                <div className="flex items-center space-x-2">
+                  <Tag color="blue" size="small">{suggestion.sourceField.name}</Tag>
+                  <ArrowRightOutlined />
+                  <Tag color="green" size="small">{suggestion.targetField.name}</Tag>
+                </div>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => applyAutoSuggestion(suggestion)}
+                >
+                  Apply
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Preview Panel */}
+      {showPreview && previewData && (
+        <Card title="🔍 Live Preview" className="mb-6" size="small">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Title level={5}>Input Data</Title>
+              <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-32">
+                {JSON.stringify(previewData, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <Title level={5}>Transformed Output</Title>
+              <pre className="bg-green-50 p-2 rounded text-xs overflow-auto max-h-32">
+                {JSON.stringify(
+                  mappings.reduce((acc, mapping) => {
+                    const inputValue = previewData[mapping.sourceField.name]
+                    acc[mapping.targetField.name] = inputValue // Simple direct mapping for preview
+                    return acc
+                  }, {} as any),
+                  null,
+                  2
+                )}
+              </pre>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <DndContext
         sensors={sensors}
